@@ -1,0 +1,8 @@
+# api core fastapi, uvicorn, pydantic,python-multipart,aiof
+fastapi==0.110.2
+uvicorn==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+python-dotenv==0.21.0
+aiofiles==24.1.0
+
