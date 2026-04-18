@@ -8,3 +8,4 @@ class ResponseStatus(Enum):
     FILE_UPLOAD_FAILED = "file_upload_failed"
     FILE_NOT_FOUND="file_not_found"
     FILE_PROCESS_SUCCESS="file_process_success"
+    FILE_PROCESS_FAILED="file_process_failed"
