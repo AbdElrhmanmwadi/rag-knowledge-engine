@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+<<<<<<< HEAD
 from routes import base, data
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -18,3 +19,11 @@ async def shutdown_event():
 
 app.include_router(base.base_router)
 app.include_router(data.data_router)
+=======
+from dotenv import load_dotenv
+from routes import base, data
+load_dotenv(".env")
+app = FastAPI()
+app.include_router(base.base_router)
+app.include_router(data.data_router)
+>>>>>>> 9cd4fe5c8b3f3af73134140deadab29b34468848
