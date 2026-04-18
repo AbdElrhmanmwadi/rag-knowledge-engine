@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
-from sqlalchemy.dialects.postgresql import UUID 
+from sqlalchemy.dialects.postgresql import UUID ,JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy import Index
 import uuid
@@ -10,7 +10,7 @@ class DataChunk(SQLAlchemyBase):
     chunk_id = Column(Integer, primary_key=True, index=True)
     chunk_uuid = Column(UUID(as_uuid=True), unique=True, index=True, nullable=False, default=uuid.uuid4)
     chunk_text=Column(String, nullable=False)
-    chunk_metadata=Column(String, nullable=True)
+    chunk_metadata=Column(JSONB, nullable=True)
     chunk_order=Column(Integer,nullable=False)
     chunk_project_id = Column(Integer, ForeignKey("projects.project_id"), nullable=False)
     chunk_asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False)
