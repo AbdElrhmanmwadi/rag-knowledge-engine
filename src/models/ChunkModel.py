@@ -43,7 +43,7 @@ class ChunkModel(BaseDataModel):
     async def delete_chunks_by_project_id(self, project_id: str):
         async with self.db_client() as session:
             async with session.begin():
-                query = select(DataChunk).where(DataChunk.project_id == project_id)
+                query = select(DataChunk).where(DataChunk.chunk_project_id == project_id)
                 result = await session.execute(query)
                 chunks_to_delete = result.scalars().all()
                 for chunk in chunks_to_delete:
