@@ -159,7 +159,7 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
 
     return JSONResponse(
         content={
-            "signal": ResponseStatus.FILE_PROCESS_FAILED.value,
+            "signal": ResponseStatus.FILE_PROCESS_SUCCESS.value,
             "inserted_chunks": no_records,
             "processed_files": no_files
         }
