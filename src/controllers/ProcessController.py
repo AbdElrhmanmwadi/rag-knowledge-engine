@@ -18,6 +18,8 @@ class ProcessController(BaseController):
         file_path=os.path.join(
             self.project_path,file_id
         )
+        if not os.path.exists(file_path):
+            return None
         file_ext=self.get_file_extension(file_id=file_id)
         if file_ext == processingEnum.TXT.value:
             return TextLoader(file_path= file_path,encoding="utf-8")

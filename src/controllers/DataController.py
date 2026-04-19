@@ -22,11 +22,7 @@ class DataController(BaseController):
 
     
         
-<<<<<<< HEAD
     def generate_unique_file_Path(self, orig_file_name: str, project_id: str):
-=======
-    def generate_unique_filename(self, orig_file_name: str, project_id: str):
->>>>>>> 9cd4fe5c8b3f3af73134140deadab29b34468848
 
         random_key = self.generate_random_string()
         project_path = ProjectController().get_project_files_path(project_id=project_id)
@@ -47,11 +43,7 @@ class DataController(BaseController):
                 random_key + "_" + cleaned_file_name
             )
 
-<<<<<<< HEAD
         return new_file_path,random_key + "_" + cleaned_file_name
-=======
-        return new_file_path
->>>>>>> 9cd4fe5c8b3f3af73134140deadab29b34468848
 
     def get_clean_file_name(self, orig_file_name: str):
 

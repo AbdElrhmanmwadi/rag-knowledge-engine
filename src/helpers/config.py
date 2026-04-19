@@ -7,14 +7,11 @@ class Settings(BaseSettings):
     FILE_ALLOWED_TYPES: list
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
-<<<<<<< HEAD
     POSTGRES_USERNAME: str
     POSTGRES_PASSWORD: str  
     POSTGRES_HOST: str
     POSTGRES_PORT: int
     POSTGRES_DB: str
-=======
->>>>>>> 9cd4fe5c8b3f3af73134140deadab29b34468848
 
     class Config:
         env_file = ".env"
