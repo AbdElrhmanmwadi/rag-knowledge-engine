@@ -1,18 +1,18 @@
-from  LLMinterface import LLMInterface
-from LLMEnum import OpenAIEnums
 from openai import OpenAI
 import logging
+
+from stores.LLMEnum import OpenAIEnums
+from stores.LLMinterface import LLMInterface
 class OpenAIprovider(LLMInterface):
-    def __init__(self,api_key:str,api_url:str=None,
-                 default_input_max_caracters:int=1000,
-                 default_output_max_caracters:int=1000,
-                 default_temperature:float=0.1,
-                 ):
+    def __init__(self,api_key: str,api_url: str=None,
+                 default_input_max_characters:int=1000,
+                 default_generation_max_output_tokens:int=1000,
+                 default_generation_temperature:float=0.1,):
         self.api_key=api_key
         self.api_url=api_url
-        self.default_input_max_caracters=default_input_max_caracters
-        self.default_output_max_caracters=default_output_max_caracters
-        self.default_temperature=default_temperature
+        self.default_input_max_characters=default_input_max_characters
+        self.default_generation_max_output_tokens=default_generation_max_output_tokens
+        self.default_generation_temperature=default_generation_temperature
         self.genaration_model_id=None
         self.embedding_model_id=None
         self.embedding_size=None
@@ -20,9 +20,6 @@ class OpenAIprovider(LLMInterface):
                            api_url=self.api_url)
         self.logger = logging.getLogger(__name__)
         
-
-        super().__init__()
-        self.llm=OpenAI()
 
     def set_genaration_model(self, model_id:str):
         self.genaration_model_id=model_id
@@ -35,7 +32,7 @@ class OpenAIprovider(LLMInterface):
         return text[:self.default_input_max_caracters].strip()
 
 
-    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_hestory:list=[],temperature:float=None):
+    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
             return None
@@ -44,10 +41,10 @@ class OpenAIprovider(LLMInterface):
             return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_output_max_caracters
         temperature=temperature if temperature  else self.default_temperature
-        chat_hestory.append(self.constract_prompt(prompt=prompt,role=OpenAIEnums.USER.value))
+        chat_history.append(self.constract_prompt(prompt=prompt,role=OpenAIEnums.USER.value))
         response=self.client.chat.completions.create(
             model=self.genaration_model_id,
-            messages=chat_hestory,
+            messages=chat_history,
             max_tokens=max_output_tokens,
             temperature=temperature
         )
