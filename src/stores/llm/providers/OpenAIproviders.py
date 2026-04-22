@@ -29,18 +29,18 @@ class OpenAIprovider(LLMInterface):
         self.embedding_size=embedding_size
 
     def process_text(self,text:str):
-        return text[:self.default_input_max_caracters].strip()
+        return text[:self.default_input_max_characters].strip()
 
 
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
             return None
-        if not self.generation_model_id:
+        if not self.genaration_model_id:
             self.logger.error("generation model for OpenAI was not set ")
             return None
-        max_output_tokens=max_output_tokens if max_output_tokens else self.default_output_max_caracters
-        temperature=temperature if temperature  else self.default_temperature
+        max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
+        temperature=temperature if temperature  else self.default_generation_temperature
         chat_history.append(self.constract_prompt(prompt=prompt,role=OpenAIEnums.USER.value))
         response=self.client.chat.completions.create(
             model=self.genaration_model_id,
@@ -56,7 +56,7 @@ class OpenAIprovider(LLMInterface):
 
         
 
-    def embed_text(self, text:str,documant_type:str=None):
+    def embed_text(self, text:str,document_type:str=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
             return None
