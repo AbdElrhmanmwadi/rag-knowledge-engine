@@ -38,5 +38,14 @@ class NLPController(BaseController):
             _=self.vectordb_client.insert_many(collection_name=collection_name,
                                             texts=texts,vectors=vectors,metadata=metadata)
             return True
+    def search_in_vectordb(self,project:Project,text:str,limit:int):
+            collection_name = self.create_collection_name(project_id= project.project_id)
+            vector=self.embedding_client.embed_text(text=text,document_type=DocumentTypeEnum.QUERY.value)
+            if not vector or len(vector)==0:
+                return False
+            search_results=self.vectordb_client.search_by_vector(collection_name=collection_name,vector=vector,limit=limit)
+            if search_results is None:
+                return False
+            return search_results
                
             
