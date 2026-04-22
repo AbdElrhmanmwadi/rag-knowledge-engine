@@ -35,24 +35,25 @@ class CoHereProvider(LLMInterface):
         
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
-               self.logger.error("OpenAI CLIENT was not set ")
+               self.logger.error("Cohere CLIENT was not set ")
                return None
-        if not self.generation_model_id:
-                self.logger.error("generation model for OpenAI was not set ")
+        if not self.genaration_model_id:
+                self.logger.error("generation model for Cohere was not set ")
                 return None
+        max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
+        temperature=temperature if temperature  else self.default_generation_temperature
         response= self.client.chat(
-                model=self.generation_model_id,
+                model=self.genaration_model_id,
                 chat_history=chat_history,
-                massage=self.process_text(prompt),
+                message=self.process_text(prompt),
                 temperature=temperature,
                 max_tokens=max_output_tokens
                 
             )
         if not response or not response.text:
-                self.logger.error("Error while genaration text with Coher")
+                self.logger.error("Error while genaration text with Cohere")
                 return None
-        max_output_tokens=max_output_tokens if max_output_tokens else self.default_output_max_caracters
-        temperature=temperature if temperature  else self.default_temperature
+        return response.text
     
     def embed_text(self, text:str,document_type:str=None):
         if not self.client:
