@@ -47,5 +47,15 @@ class NLPController(BaseController):
             if search_results is None:
                 return False
             return search_results
+    def answer_rag_question(self,query:str,project:Project,limit:int=30):
+            search_results=self.search_in_vectordb(project=project,text=query,limit=limit)
+            if search_results is False:
+                return False
+            context="\n".join([result.text for result in search_results])
+            prompt=f"Answer the question based on the following context:\nContext:{context}\nQuestion:{query}"
+            answer=self.generation_client.genarate_text(prompt=prompt)
+            return answer,search_results
+          
+
                
             
