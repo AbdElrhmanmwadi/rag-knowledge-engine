@@ -4,7 +4,7 @@ import logging
 from controllers import NLPController
 from models.ChunkModel import ChunkModel
 from models.enums.ResponseEnums import ResponseStatus
-from routes.schemes.nlp import PushRequest
+from routes.schemes.nlp import PushRequest,searchRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 
@@ -90,5 +90,47 @@ async def get_project_index_infoo(request:Request,project_id:int):
         content={
             "signal": ResponseStatus.GET_VECTORDB_COLLECTION_INFO_SUCCESS.value,
             "collection_info":collection_info
+        }
+    )
+@nlp_router.post("/index/search/{project_id}")
+async def search_project_index(request:Request,project_id:int,search_request:searchRequest):
+    project_model = await ProjectModel.create_instance(
+        db_client=request.app.db_client
+    )
+    project= await project_model.get_project_or_create(
+        project_id=project_id
+    )
+    if not project:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={
+                "signal": ResponseStatus.PROJECT_NOT_FOUND.value
+            }
+        )
+    
+    nlp_controller=NLPController(
+        embedding_client=request.app.embedding_client,
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client
+    )
+    search_result= nlp_controller.search_in_vectordb(project=project,text=search_request.text,limit=search_request.limit)
+    if search_result is False:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "signal": ResponseStatus.VECTOR_SEARCH_FAILED.value
+            }
+        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "signal": ResponseStatus.VECTOR_SEARCH_SUCCESS.value,
+            "search_result":[
+                {
+                    "text":result.text,
+                    "score":result.score
+                }
+                for result in search_result
+            ]
         }
     )
