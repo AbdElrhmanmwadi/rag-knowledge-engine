@@ -5,7 +5,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
 from stores.llm.providers.LLMProviderFactory import LLMProviderFactory
 
-from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory   
+from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+from stores.llm.template_parser import TemplateParser   
+
+
 app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
@@ -15,7 +18,7 @@ async def startup_event():
     app.db_client = sessionmaker(app.db_engine, expire_on_commit=False, class_=AsyncSession)
     LLM_Provider_Factory=LLMProviderFactory(settings)
     vectordb_provider_factory = VectorDBProviderFactory(settings)
-
+    
 
 
     app.generation_client = LLM_Provider_Factory.create(provider=settings.GENERATION_BACKEND)
@@ -26,6 +29,11 @@ async def startup_event():
                                              embedding_size=settings.EMBEDDING_MODEL_SIZE)
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
     app.vectordb_client.connect()
+    app.template_parser= TemplateParser(
+        language=settings.PRIMARY_LANG,
+        defult_language=settings.DEFAULT_LANG
+
+    )
 
     
         
