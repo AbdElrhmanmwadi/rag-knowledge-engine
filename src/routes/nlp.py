@@ -1,6 +1,7 @@
 from fastapi import FastAPI,APIRouter,status,Request
 from fastapi.responses import JSONResponse
 import logging
+
 from controllers import NLPController
 from models.ChunkModel import ChunkModel
 from models.enums.ResponseEnums import ResponseStatus
@@ -34,7 +35,8 @@ async def get_project_index_info(request:Request,project_id:int,Push_Request:Pus
     nlp_controller=NLPController(
         embedding_client=request.app.embedding_client,
         vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client
+        generation_client=request.app.generation_client,
+        template_parser=request.app.template_parser
     )
     has_record=True
     page_no=1
@@ -82,7 +84,8 @@ async def get_project_index_infoo(request:Request,project_id:int):
     nlp_controller=NLPController(
         embedding_client=request.app.embedding_client,
         vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client
+        generation_client=request.app.generation_client,
+        template_parser=request.app.template_parser
     )
     collection_info= nlp_controller.get_vectordb_collection_info(project=project)
     return JSONResponse(
@@ -111,7 +114,8 @@ async def search_project_index(request:Request,project_id:int,search_request:sea
     nlp_controller=NLPController(
         embedding_client=request.app.embedding_client,
         vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client
+        generation_client=request.app.generation_client,
+        template_parser=request.app.template_parser
     )
     search_result= nlp_controller.search_in_vectordb(project=project,text=search_request.text,limit=search_request.limit)
     if search_result is False:
@@ -153,32 +157,17 @@ async def answer_rag_question(request:Request,project_id:int,search_request:sear
     nlp_controller=NLPController(
         embedding_client=request.app.embedding_client,
         vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client
+        generation_client=request.app.generation_client,
+        template_parser=request.app.template_parser
     )
-  
     
-    question=search_request.text
-    rag_answer,search_result= nlp_controller.answer_rag_question(query=question,project=project,limit=search_request.limit)
+    rag_answer,full_prompt,chat_history= nlp_controller.answer_rag_question(query=search_request.text,project=project,limit=search_request.limit)
     if not rag_answer:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "signal": ResponseStatus.RAG_ANSWER_FAILED.value
-            }
-        )
-    # Convert RetrievedDocument objects to dictionaries for JSON serialization
-    search_result_dicts = [
-        {"text": result.text, "score": result.score} 
-        for result in search_result
-    ] if search_result else []
-    
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "signal": ResponseStatus.RAG_ANSWER_SUCCESS.value,
-            "answer":rag_answer,
-            "search_result":search_result_dicts
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,content={"signal":ResponseStatus.RAG_ANSWER_FAILED.value,"message":"No answer could be generated from the retrieved documents"})
+    return JSONResponse(status_code=status.HTTP_200_OK,content={"signal":ResponseStatus.RAG_ANSWER_SUCCESS.value,
+                                 "answer": rag_answer,
+                                 "full_prompt": full_prompt,
+                                 "chat_history": chat_history})
 
-        }
-    )
+
 

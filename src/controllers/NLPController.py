@@ -1,18 +1,24 @@
 from typing import List
 
+from fastapi.responses import JSONResponse
+
 from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
 from stores.LLMEnum import DocumentTypeEnum
 
 from .BaseController import BaseController
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class NLPController(BaseController):
-    def __init__(self,vectordb_client,embedding_client,generation_client,):
+    def __init__(self,vectordb_client,embedding_client,generation_client,template_parser):
         super().__init__()
         self.vectordb_client = vectordb_client
         self.embedding_client = embedding_client
         self.generation_client = generation_client
+        self.template_parser = template_parser
     def create_collection_name(self,project_id:str):
             return f"collection_{project_id}".strip()
 
@@ -48,13 +54,53 @@ class NLPController(BaseController):
                 return False
             return search_results
     def answer_rag_question(self,query:str,project:Project,limit:int=30):
-            search_results=self.search_in_vectordb(project=project,text=query,limit=limit)
-            if search_results is False:
-                return False
-            context="\n".join([result.text for result in search_results])
-            prompt=f"Answer the question based on the following context:\nContext:{context}\nQuestion:{query}"
-            answer=self.generation_client.genarate_text(prompt=prompt)
-            return answer,search_results
+        answer = None
+        full_prompt = None
+        chat_history = None
+        retreved_documant= self.search_in_vectordb(project=project,text=query,limit=limit)
+        if not retreved_documant or len(retreved_documant)==0:
+            logger.warning(f"No documents retrieved for query: {query}")
+            return answer,full_prompt,chat_history
+        logger.info(f"Retrieved {len(retreved_documant)} documents")
+        system_promit=self.template_parser.get("rag","system_prompt")
+        if not system_promit:
+            logger.error("Failed to get system_prompt from template parser")
+            return answer,full_prompt,chat_history
+        document_prompts = []
+        for idx, doc in enumerate(retreved_documant):
+            doc_prompt = self.template_parser.get("rag","documant_prompt",{
+                 "doc_number":idx+1,
+                 "chunk_text":self.generation_client.process_text(doc.text),
+                 })
+            if doc_prompt:
+                document_prompts.append(doc_prompt)
+        if not document_prompts:
+            logger.error("Failed to generate document prompts")
+            return answer,full_prompt,chat_history
+        document_prompt="\n".join(document_prompts)
+        footer_prompt=self.template_parser.get("rag","footer_prompt",{
+            "query":query
+        })
+        if not footer_prompt:
+            logger.error("Failed to get footer_prompt from template parser")
+            return answer,full_prompt,chat_history
+        chat_history=[
+        self.generation_client.constract_prompt(prompt=system_promit,role=self.generation_client.enums.SYSTEM.value),]
+        full_prompt="\n\n".join([document_prompt, footer_prompt])
+        logger.info(f"Generated full prompt with {len(document_prompts)} documents")
+        try:
+            answer = self.generation_client.genarate_text(
+                prompt=full_prompt,
+                chat_history=chat_history,
+                max_output_tokens=None
+            )
+        except Exception as e:
+            logger.error(f"Error generating text: {str(e)}")
+            answer = None
+        return answer,full_prompt,chat_history
+            
+            
+           
           
 
                
