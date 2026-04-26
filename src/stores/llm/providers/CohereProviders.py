@@ -7,6 +7,7 @@ import logging
 
 from stores.LLMEnum import CohereEnums
 from stores.LLMinterface import LLMInterface
+from typing import List,Union
 class CoHereProvider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
                  default_input_max_characters:int=1000,
@@ -56,7 +57,7 @@ class CoHereProvider(LLMInterface):
                 return None
         return response.text
     
-    def embed_text(self, text:str,document_type:str=None):
+    def embed_text(self, text:Union[str,List[str]],document_type:str=None):
         if not self.client:
                     self.logger.error("OpenAI CLIENT was not set ")
                     return None
@@ -68,14 +69,15 @@ class CoHereProvider(LLMInterface):
                 input_type=CohereEnums.QUERY.value
         response =self.client.embed(
                 model=self.embedding_model_id,
-                texts=[self.process_text(text)],
+                texts=[self.process_text(text)] if isinstance(text, str) else [self.process_text(t) for t in text],
                 input_type=input_type,
                 embedding_types=['float'],
             )
         if not response or not response.embeddings or not response.embeddings.float:
                  self.logger.error("Error while embedding text with CoHere")
                  return None
-        return response.embeddings.float[0]
+        
+        return [i for i in response.embeddings.float]
   
     def constract_prompt(self, prompt:str,role:str):
          return{

@@ -1,3 +1,4 @@
+from bson import ObjectId
 from sqlalchemy import func, select
 
 from models.db_schemes.minirag.scheme import DataChunk
@@ -37,7 +38,6 @@ class ChunkModel(BaseDataModel):
                 for i in range(0, len(chunks), batch_size):
                     batch = chunks[i:i + batch_size]
                     session.add_all(batch)
-                    await session.commit()
         return len(chunks)
     
     async def delete_chunks_by_project_id(self, project_id: str):
@@ -58,8 +58,11 @@ class ChunkModel(BaseDataModel):
                 result = await session.execute(query)
                 chunks = result.scalars().all()
             return chunks
-
-            
-        
-
-    
+    async def get_chunks_count_by_project_id(self, project_id):
+        count = 0
+        async with self.db_client() as session:
+            async with session.begin():
+                query = select(func.count(DataChunk.chunk_id)).where(DataChunk.chunk_project_id == project_id)
+                result = await session.execute(query)
+                count = result.scalar()
+            return count

@@ -1,5 +1,4 @@
 from typing import List
-import uuid
 
 from models.db_schemes.minirag.scheme.data_chunk import RetrievedDocument
 
@@ -13,14 +12,21 @@ from sqlalchemy.sql import text as sql_text
 import json
 import logging
 class PGVectorDBProvider(VectorDBInterface):
-    def __init__(self,db_client:str,distance_method:str=None,default_vector_size:int=786,index_threshold: int=100):
+    def __init__(self,db_client:str,distance_method:str=None,default_vector_size:int=786,index_threshold: int=70):
         self.db_client=db_client
-        self.distance_method=distance_method
+        
         self.default_vector_size=default_vector_size
         self.logger=logging.getLogger("uvicorn")
         self.pgvector_table_prefix=PgVectorTableSchemeEnums._PREFIX.value
         self.default_index_name=lambda collection_name: f"{collection_name}_vector_idx"
         self.index_threshold = index_threshold
+        if distance_method== DistanceMethodEnums.COSINE.value:
+            distance_method= PgVectorDistanceMethodEnums.COSINE.value
+        elif distance_method== DistanceMethodEnums.DOT.value:
+            distance_method= PgVectorDistanceMethodEnums.COSINE.value
+
+        self.distance_method=distance_method
+
     async def connect(self):
         async with self.db_client() as session:
             async with session.begin():
@@ -130,6 +136,7 @@ class PGVectorDBProvider(VectorDBInterface):
                                         index_type: str = PgVectorIndexTypeEnums.HNSW.value):
         is_index_existed = await self.is_index_existed(collection_name=collection_name)
         if is_index_existed:
+            self.logger.info(f"Vector index already exists for collection: {collection_name}")
             return False
         
         async with self.db_client() as session:
@@ -139,9 +146,10 @@ class PGVectorDBProvider(VectorDBInterface):
                 records_count = result.scalar_one()
 
                 if records_count < self.index_threshold:
+                    self.logger.warning(f"Skipping index creation for {collection_name}: only {records_count} records (threshold: {self.index_threshold})")
                     return False
                 
-                self.logger.info(f"START: Creating vector index for collection: {collection_name}")
+                self.logger.info(f"START: Creating vector index for collection: {collection_name} ({records_count} records)")
                 
                 index_name = self.default_index_name(collection_name)
                 create_idx_sql = sql_text(
@@ -193,8 +201,6 @@ class PGVectorDBProvider(VectorDBInterface):
                 })
                 await session.commit()
 
-                await self.create_vector_index(collection_name=collection_name)
-        
         return True
     async def insert_many(self, collection_name: str, texts: list,
                          vectors: list, metadata: list = None,
@@ -205,8 +211,19 @@ class PGVectorDBProvider(VectorDBInterface):
             self.logger.error(f"Can not insert new records to non-existed collection: {collection_name}")
             return False
         
+        # Validate that texts and vectors have the same length
+        if len(texts) != len(vectors):
+            self.logger.error(f"Invalid data items for collection {collection_name}: texts and vectors have different lengths")
+            return False
+        
+        # record_ids must be provided
+        if not record_ids:
+            self.logger.error(f"record_ids must be provided for collection {collection_name}")
+            return False
+        
+        # Validate that all required fields have the same length
         if len(vectors) != len(record_ids):
-            self.logger.error(f"Invalid data items for collection: {collection_name}")
+            self.logger.error(f"Invalid data items for collection {collection_name}: vectors and record_ids have different lengths")
             return False
         
         if not metadata or len(metadata) == 0:
@@ -240,8 +257,6 @@ class PGVectorDBProvider(VectorDBInterface):
                                     f'VALUES (:text, :vector, :metadata, :chunk_id)')
                     
                     await session.execute(batch_insert_sql, values)
-
-        # await self.create_vector_index(collection_name=collection_name)
 
         return True
     async def search_by_vector(self, collection_name: str, vector: list, limit: int):

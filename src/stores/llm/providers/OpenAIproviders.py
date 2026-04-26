@@ -3,6 +3,7 @@ import logging
 
 from stores.LLMEnum import OpenAIEnums
 from stores.LLMinterface import LLMInterface
+from typing import List,Union
 class OpenAIprovider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
                  default_input_max_characters:int=1000,
@@ -57,7 +58,7 @@ class OpenAIprovider(LLMInterface):
 
         
 
-    def embed_text(self, text:str,document_type:str=None):
+    def embed_text(self, text:Union[str,List[str]],document_type:str=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
             return None
@@ -66,12 +67,12 @@ class OpenAIprovider(LLMInterface):
             return None
         response =self.client.embeddings.create(
             model=self.embedding_model_id,
-            input=text
+            input=[text] if isinstance(text, str) else [self.process_text(t) for t in text]
         )
         if response is None or response.data is None or len(response.data) == 0:
             self.logger.error("Error while embedding text with openai")
             return None
-        return response.data[0].embedding
+        return [item.embedding for item in response.data]
     def constract_prompt(self, prompt:str,role:str):
         return{
             "role":role,
