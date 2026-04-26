@@ -18,6 +18,7 @@ from models.db_schemes.minirag.scheme import DataChunk
 from models.db_schemes.minirag.scheme import Asset
 from models.enums import ResponseEnums
 from models.enums.AssetTypeEnum import AssetTypeEnum
+from controllers.NLPController import NLPController
 logger = logging.getLogger("uvicorn.error")
 
 data_router = APIRouter(
@@ -68,6 +69,10 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
     project_model= await ProjectModel.create_instance(db_client=request.app.db_client)
     project = await project_model.get_project_or_create(project_id=str(project_id))
     asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
+    nlp_Controller= NLPController(vectordb_client=request.app.vectordb_client,
+                                embedding_client=request.app.embedding_client,
+                                generation_client=request.app.generation_client,
+                                template_parser=request.app.template_parser)
 
    
     project_file_ids={}
@@ -114,6 +119,10 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
         _ = await chunk_model.delete_chunks_by_project_id(
             project_id=project.project_id
         )
+        _ = await request.app.vectordb_client.delete_collection(
+            collection_name=nlp_Controller.create_collection_name(project_id=project.project_id)
+        )
+
 
     asset_record=await asset_model.get_asset_record(asset_project_id=project.project_id, asset_name=process_request.file_id)
 
