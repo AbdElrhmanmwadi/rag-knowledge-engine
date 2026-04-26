@@ -134,7 +134,8 @@ class QdrantDBProvider(VectorDBInterface):
          return[
             RetrievedDocument(**{
                 "text": result.payload["text"],
-                "score": result.score
+                "score": result.score,
+                "meta_data": result.payload["metadata"] if "metadata" in result.payload else None
             })
 
             for result in results

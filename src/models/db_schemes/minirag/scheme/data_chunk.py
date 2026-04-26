@@ -27,5 +27,6 @@ class DataChunk(SQLAlchemyBase):
 class RetrievedDocument(BaseModel):
 
     text: str
-    score: float    
+    score: float
+    meta_data: dict = None
 
