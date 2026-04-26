@@ -6,6 +6,7 @@ system_prompt=Template("\n".join([
         "ignore the document that are not relevant to the user's query",
         "if the provided document are not relevant to the user's query or you can not genarate a respons base on the provided document answer with i am sorry i can not answer this question",
         "you have to genarate rspons with same language as the user's query",
+        "you have to mention the source of the answer if it exist in the provided document page number",   
         "be polite and concise while genarating the respons",
         "avoid unnecessary information in the respons genaration",
 
@@ -16,7 +17,9 @@ system_prompt=Template("\n".join([
 
 documant_prompt=Template("\n".join([
  "## Document No: $doc_number",
-    "### content: $chunk_text",]))
+    "### content: $chunk_text",
+    "### page_number: $page_number"
+    ]))
 
 footer_prompt=Template("\n".join([
     "base only on the above document , plese genarate a answer for the user:",

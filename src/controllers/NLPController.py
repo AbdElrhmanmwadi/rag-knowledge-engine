@@ -84,6 +84,7 @@ class NLPController(BaseController):
             doc_prompt = self.template_parser.get("rag","documant_prompt",{
                  "doc_number":idx+1,
                  "chunk_text":self.generation_client.process_text(doc.text),
+                 "page_number":doc.meta_data.get("page") if doc.meta_data else None,
                  })
             if doc_prompt:
                 document_prompts.append(doc_prompt)

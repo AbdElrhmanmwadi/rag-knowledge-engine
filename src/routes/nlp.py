@@ -160,7 +160,8 @@ async def search_project_index(request:Request,project_id:int,search_request:sea
             "search_result":[
                 {
                     "text":result.text,
-                    "score":result.score
+                    "score":result.score,
+                    "meta_data":result.meta_data
                 }
                 for result in search_result
             ]
