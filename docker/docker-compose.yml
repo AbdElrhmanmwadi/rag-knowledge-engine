@@ -36,10 +36,37 @@ services:
       - backend
     
     restart: always
+    
+  libretranslate:
+    
+    image: libretranslate/libretranslate:latest
+    
+    container_name: libretranslate
+    user: "0:0"
+    restart: always
+    ports:
+      - "5000:5000"
+    command: ["--req-limit", "100"]
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - libretranslate_models:/home/libretranslate/.local/share/argos-translate
+    healthcheck:
+      test: ['CMD-SHELL', './venv/bin/python scripts/healthcheck.py']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    networks:
+      - backend
+
 
 networks:
   backend:
 
+
 volumes:
   mongodata:
   pgvector_data:
+  libretranslate_models:
