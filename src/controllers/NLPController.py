@@ -1,6 +1,6 @@
+import asyncio
+import os
 from typing import List
-
-from fastapi.responses import JSONResponse
 
 from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
@@ -112,10 +112,4 @@ class NLPController(BaseController):
             logger.error(f"Error generating text: {str(e)}")
             answer = None
         return answer,full_prompt,chat_history
-            
-            
-           
-          
-
-               
-            
+ 
