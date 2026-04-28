@@ -11,5 +11,6 @@ class Project(SQLAlchemyBase):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     chunks = relationship("DataChunk", back_populates="project")
     assets = relationship("Asset", back_populates="project")
+    translation_jobs = relationship("TranslationJob", back_populates="project")
 
     
