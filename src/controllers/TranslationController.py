@@ -1,5 +1,6 @@
 import os
 
+from stores.translation.TranslationExceptions import TranslationException
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
 from models.TranslationJobModel import TranslationJobModel
@@ -8,7 +9,6 @@ from models.enums.AssetTypeEnum import AssetTypeEnum
 from .BaseController import BaseController
 from .DataController import DataController
 from .ProjectController import ProjectController
-from helpers.translation import FileParser, FileRebuilder
 
 
 class TranslationController(BaseController):
@@ -16,8 +16,6 @@ class TranslationController(BaseController):
         super().__init__()
         self.db_client = db_client
         self.translation_provider = translation_provider
-        self.file_parser = FileParser()
-        self.file_rebuilder = FileRebuilder()
 
     async def create_translation_job(
         self,
@@ -65,13 +63,20 @@ class TranslationController(BaseController):
                 project_id=translation_job.project_id,
                 file_name=source_asset.asset_name
             )
-            parsed_file = self.file_parser.parse(file_path=source_file_path)
-            translated_sections = self._translate_sections(
-                sections=parsed_file.get("sections", []),
+            
+            # Read source file as bytes
+            with open(source_file_path, "rb") as f:
+                file_bytes = f.read()
+
+            # Translate file directly using translation provider
+            translated_file_bytes = await self.translation_provider.translate_file(
+                file_bytes=file_bytes,
+                filename=source_asset.asset_name,
                 source_lang=translation_job.source_lang,
                 target_lang=translation_job.target_lang
             )
 
+            # Build output file path and save translated file
             translated_file_name = self._build_translated_file_name(
                 source_file_name=source_asset.asset_name,
                 target_lang=translation_job.target_lang
@@ -80,11 +85,9 @@ class TranslationController(BaseController):
                 orig_file_name=translated_file_name,
                 project_id=str(translation_job.project_id)
             )
-            self.file_rebuilder.rebuild(
-                parsed_file=parsed_file,
-                translated_sections=translated_sections,
-                output_file_path=translated_file_path
-            )
+            
+            with open(translated_file_path, "wb") as f:
+                f.write(translated_file_bytes)
 
             translated_asset = Asset(
                 asset_project_id=translation_job.project_id,
@@ -107,7 +110,17 @@ class TranslationController(BaseController):
                 error_message=None
             )
             return translated_asset
+        except TranslationException as exc:
+            # Translation-specific error: extract api_error_code and message
+            error_msg = f"{exc.message} (code: {exc.api_error_code})" if exc.api_error_code else exc.message
+            await translation_job_model.update_job(
+                job_id=job_id,
+                status="failed",
+                error_message=error_msg
+            )
+            return None
         except Exception as exc:
+            # Other errors (file I/O, database, etc.)
             await translation_job_model.update_job(
                 job_id=job_id,
                 status="failed",
@@ -153,22 +166,3 @@ class TranslationController(BaseController):
             for char in str(value or "").strip().lower()
         )
         return sanitized_value.strip("_") or "translated"
-
-    def _translate_sections(self, sections: list, source_lang: str, target_lang: str):
-        translated_sections = []
-        for section in sections:
-            section_index = section.get("index")
-            try:
-                translated_text = self.translation_provider.translate_text(
-                    text=section.get("text", ""),
-                    source_language=source_lang,
-                    target_language=target_lang
-                )
-            except Exception as exc:
-                raise RuntimeError(f"Translation failed for section {section_index}: {exc}") from exc
-
-            translated_sections.append({
-                "index": section_index,
-                "translated_text": translated_text
-            })
-        return translated_sections
