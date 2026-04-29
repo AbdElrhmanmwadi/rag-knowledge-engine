@@ -39,7 +39,7 @@ services:
     
   libretranslate:
     
-    image: libretranslate/libretranslate:latest
+    image: libretranslate/libretranslate:v1.9.4
     
     container_name: libretranslate
     
