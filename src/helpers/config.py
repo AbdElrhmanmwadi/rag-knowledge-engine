@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     TRANSLATION_ENGINE: str 
     TRANSLATION_API_KEY: str = None
     TRANSLATION_BASE_URL: str = "http://localhost:5000/translate"
+    TRANSLATION_FILE_ENDPOINT_URL: str = "http://localhost:5000/translate/file"
     TRANSLATION_TIMEOUT_SECONDS: int = 60
     TRANSLATION_MAX_RETRIES: int = 2
     TRANSLATION_RETRY_BACKOFF_SECONDS: float = 1.0
