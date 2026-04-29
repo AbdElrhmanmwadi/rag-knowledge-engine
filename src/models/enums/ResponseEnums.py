@@ -18,3 +18,7 @@ class ResponseStatus(Enum):
     VECTOR_SEARCH_FAILED= "vector_search_failed"
     RAG_ANSWER_FAILED= "rag_answer_failed"
     RAG_ANSWER_SUCCESS= "rag_answer_success"
+    TRANSLATION_SUCCESS= "translation_success"
+    TRANSLATION_FAILED= "translation_failed"
+    TRANSLATION_JOB_CREATED= "translation_job_created"
+    TRANSLATION_STATUS_SUCCESS= "translation_status_success"
