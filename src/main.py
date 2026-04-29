@@ -1,10 +1,11 @@
 from fastapi import FastAPI
-from routes import base, data,nlp
+from routes import base, data,nlp,translation_router
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
 from stores.llm.providers.LLMProviderFactory import LLMProviderFactory
 
+from stores.translation.TranslationProviderFactory import TranslationProviderFactory
 from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.template_parser import TemplateParser   
 
@@ -17,6 +18,7 @@ async def startup_event():
     app.db_engine = create_async_engine(postgres_conn)
     app.db_client = sessionmaker(app.db_engine, expire_on_commit=False, class_=AsyncSession)
     LLM_Provider_Factory=LLMProviderFactory(settings)
+    translation_provider_factory = TranslationProviderFactory(settings)
     vectordb_provider_factory = VectorDBProviderFactory(config=settings,db_client=app.db_client)
     
 
@@ -27,6 +29,7 @@ async def startup_event():
     app.embedding_client = LLM_Provider_Factory.create(provider=settings.EMBEDDING_BACKEND)
     app.embedding_client.set_embedding_model(model_id=settings.EMBEDDING_MODEL_ID,
                                              embedding_size=settings.EMBEDDING_MODEL_SIZE)
+    app.translation_provider = translation_provider_factory.create(provider=settings.TRANSLATION_ENGINE)
     
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
     if app.vectordb_client is None:
@@ -50,3 +53,4 @@ async def shutdown_event():
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
+app.include_router(translation_router.translation_router)
