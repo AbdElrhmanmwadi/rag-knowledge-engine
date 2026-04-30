@@ -5,7 +5,6 @@ class Settings(BaseSettings):
     APP_NAME: str
     APP_DESCRIPTION: str
     APP_VERSION: str
-    FILE_ALLOWED_TYPES: list
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
     POSTGRES_USERNAME: str
