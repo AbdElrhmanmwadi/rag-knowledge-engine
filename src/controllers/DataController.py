@@ -2,19 +2,24 @@ import os
 
 from .BaseController import BaseController
 from .ProjectController import ProjectController
-from fastapi import UploadFile, File
+from fastapi import UploadFile
+from helpers.file_registry import is_supported_content_type, is_supported_file
 from models import ResponseStatus
 import re
 class DataController(BaseController):
     def __init__(self):
         super().__init__()
     async def validate_uploaded_file(self, file: UploadFile):
-        # Implement your validation logic here
-        # For example, check the file type, size, etc.
-        if file.content_type not in self.app_settings.FILE_ALLOWED_TYPES:
+        file_name = file.filename or ""
+
+        if not is_supported_file(file_name):
             return False, ResponseStatus.FILE_TYPE_NOT_SUPPORTED.value
-            
-        if file.size > self.app_settings.FILE_MAX_SIZE*1024*1024:
+
+        if not is_supported_content_type(file_name, file.content_type):
+            return False, ResponseStatus.FILE_TYPE_NOT_SUPPORTED.value
+
+        file_size = file.size or 0
+        if file_size > self.app_settings.FILE_MAX_SIZE*1024*1024:
             return False, ResponseStatus.FILE_SIZE_EXCEEDED.value
 
         return True, ResponseStatus.FILE_VALIDATED_SUCCESS.value
