@@ -194,7 +194,45 @@ async def list_files(request:Request,project_id:int):
             "files": files_list
         }
     )
-
+#endpoint to delete file by file_id and project_id
+@data_router.delete("/delete/{project_id}/{file_id}")
+async def delete_file(request:Request,project_id:int,file_id:str):
+    project_model= await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create(project_id=str(project_id))
+    asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_record=await asset_model.get_asset_record(asset_project_id=project.project_id, asset_name=file_id)
+    if asset_record is None:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "signal": ResponseStatus.FILE_ID_ERROR.value,
+            }
+        )
+    deleted_asset=await asset_model.delete_asset_by_id(asset_id=asset_record.asset_id)
+    if deleted_asset is None:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "signal": ResponseStatus.FILE_PROCESS_FAILED.value,
+            }
+        )
+    file_path=os.path.join(
+        ProjectController().get_project_files_path(project_id=str(project_id)),
+        file_id
+    )
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"status": ResponseStatus.FILE_PROCESS_FAILED.value})
+    
+    return JSONResponse(
+        content={
+            "signal": ResponseStatus.FILE_PROCESS_SUCCESS.value,
+            "deleted_file": file_id
+        }
+    )
 
 
     
