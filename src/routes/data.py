@@ -173,4 +173,28 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
             "processed_files": no_files
         }
     )
+#endpoint to list files by project
+@data_router.get("/files/{project_id}")
+async def list_files(request:Request,project_id:int):
+    project_model= await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create(project_id=str(project_id))
+    asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
+   
+    project_files=await asset_model.get_all_project_asset(asset_project_id=project.project_id,asset_type=AssetTypeEnum.FILE.value)
+    files_list=[
+        {
+            "file_id":record.asset_name,
+            "file_size":record.asset_size
+        }
+        for record in project_files
+    ]
+    return JSONResponse(
+        content={
+            "signal": ResponseStatus.FILE_LIST_SUCCESS.value,
+            "files": files_list
+        }
+    )
+
+
+
     
