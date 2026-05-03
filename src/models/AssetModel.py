@@ -37,6 +37,15 @@ class AssetModel(BaseDataModel):
                 result = await session.execute(select(Asset).where(Asset.asset_id == asset_id))
                 asset = result.scalar_one_or_none()
             return asset
+    async def delete_asset_by_id(self, asset_id:int):
+        async with self.db_client() as session:
+            async with session.begin():
+                result = await session.execute(select(Asset).where(Asset.asset_id == asset_id))
+                asset = result.scalar_one_or_none()
+                if asset is not None:
+                    await session.delete(asset)
+                    await session.commit()
+            return asset
     
 
                 
