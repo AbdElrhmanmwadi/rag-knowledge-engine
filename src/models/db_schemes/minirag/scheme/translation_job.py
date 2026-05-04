@@ -18,7 +18,7 @@ class TranslationJob(SQLAlchemyBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    project = relationship("Project", back_populates="translation_jobs")
+    project = relationship("Project", back_populates="translation_jobs", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_translation_jobs_project_id", project_id),

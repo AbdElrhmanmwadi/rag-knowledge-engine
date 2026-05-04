@@ -8,6 +8,8 @@ class ResponseStatus(Enum):
     FILE_NOT_FOUND="file_not_found"
     FILE_PROCESS_SUCCESS="file_process_success"
     FILE_PROCESS_FAILED="file_process_failed"
+    FILE_LIST_SUCCESS="get_file_list_success"
+    FILE_LIST_FAILED="get_file_list_failed"
     NO_FILES_ERROR="no file error"
     FILE_ID_ERROR="File ID not found"
     PROJECT_NOT_FOUND="project not found"
@@ -22,3 +24,6 @@ class ResponseStatus(Enum):
     TRANSLATION_FAILED= "translation_failed"
     TRANSLATION_JOB_CREATED= "translation_job_created"
     TRANSLATION_STATUS_SUCCESS= "translation_status_success"
+    TRANSLATION_STATUS_FAILED= "translation_status_failed"
+    
+
