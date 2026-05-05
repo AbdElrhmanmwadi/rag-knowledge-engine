@@ -1,8 +1,6 @@
 from .BaseController import BaseController
 from .ProjectController import ProjectController
-from langchain_community.document_loaders import TextLoader
-from langchain_community.document_loaders import PyMuPDFLoader
-from models import processingEnum
+from helpers.file_registry import get_file_loader_factory, normalize_file_extension
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os 
 class ProcessController(BaseController):
@@ -12,7 +10,7 @@ class ProcessController(BaseController):
         self.project_path=ProjectController().get_project_files_path(project_id=project_id)
 
     def get_file_extension(self,file_id:str) :
-        return os.path.splitext(file_id)[-1]
+        return normalize_file_extension(file_id)
     
     def get_file_loader(self,file_id:str):
         file_path=os.path.join(
@@ -20,11 +18,15 @@ class ProcessController(BaseController):
         )
         if not os.path.exists(file_path):
             return None
-        file_ext=self.get_file_extension(file_id=file_id)
-        if file_ext == processingEnum.TXT.value:
-            return TextLoader(file_path= file_path,encoding="utf-8")
-        if file_ext == processingEnum.PDF.value:
-            return PyMuPDFLoader(file_path= file_path)
+        factory = get_file_loader_factory(file_id)
+        if factory is None:
+            return None
+        return factory(file_path)
+
+        # if file_ext == processingEnum.TXT.value:
+        #     return TextLoader(file_path= file_path,encoding="utf-8")
+        # if file_ext == processingEnum.PDF.value:
+        #     return PyMuPDFLoader(file_path= file_path)
         return None
     def get_file_content(self,file_id:str):
         loader=self.get_file_loader(file_id=file_id)

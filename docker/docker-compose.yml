@@ -36,10 +36,42 @@ services:
       - backend
     
     restart: always
+    
+  libretranslate:
+    
+    image: libretranslate/libretranslate:v1.9.4
+    
+    container_name: libretranslate
+    
+    user: "0:0"
+    restart: always
+    ports:
+      - "5000:5000"
+    command: --load-only ar,en --req-limit 100
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - libretranslate_models:/home/libretranslate/.local/share/argos-translate
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - ./venv/bin/python -c "from urllib.request import urlopen; import sys; response = urlopen('http://localhost:5000/health', timeout=5); sys.exit(0 if response.status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+    networks:
+      - backend
+
 
 networks:
   backend:
+    driver: bridge
+
 
 volumes:
   mongodata:
   pgvector_data:
+  libretranslate_models:

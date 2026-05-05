@@ -5,7 +5,6 @@ class Settings(BaseSettings):
     APP_NAME: str
     APP_DESCRIPTION: str
     APP_VERSION: str
-    FILE_ALLOWED_TYPES: list
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
     POSTGRES_USERNAME: str
@@ -19,6 +18,14 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = None
     OPENAI_API_URL: str = None
     COHERE_API_KEY: str = None
+    TRANSLATION_ENGINE: str 
+    TRANSLATION_API_KEY: str = None
+    TRANSLATION_BASE_URL: str = "http://localhost:5000/translate"
+    TRANSLATION_FILE_ENDPOINT_URL: str = "http://localhost:5000/translate/file"
+    TRANSLATION_TIMEOUT_SECONDS: int = 60
+    TRANSLATION_MAX_RETRIES: int = 2
+    TRANSLATION_RETRY_BACKOFF_SECONDS: float = 1.0
+    DEFAULT_TARGET_LANG: str = "ar"
 
     GENERATION_MODEL_ID: str = None
     EMBEDDING_MODEL_ID: str = None
