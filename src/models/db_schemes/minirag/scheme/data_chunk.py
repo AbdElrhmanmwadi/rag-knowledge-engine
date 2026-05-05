@@ -16,8 +16,8 @@ class DataChunk(SQLAlchemyBase):
     chunk_asset_id = Column(Integer, ForeignKey("assets.asset_id",ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(),nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    project=relationship("Project", back_populates="chunks", cascade="all, delete-orphan")
-    asset=relationship("Asset", back_populates="chunks", cascade="all, delete-orphan")
+    project=relationship("Project", back_populates="chunks")
+    asset=relationship("Asset", back_populates="chunks")
     __table_args__ =(Index("ix_chunk_project_id",chunk_project_id),
                      Index("ix_chunk_asset_id",chunk_asset_id),
                      )
