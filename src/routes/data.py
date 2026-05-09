@@ -2,6 +2,7 @@ from fastapi import FastAPI,Depends,APIRouter, UploadFile,status,Request
 from fastapi.responses import JSONResponse
 from openai import models
 from helpers.config import Settings, get_settings
+from helpers.process_reset import reset_project_processing_state
 from controllers import DataController,ProjectController,ProcessController
 import aiofiles 
 import logging
@@ -116,11 +117,11 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
             db_client=request.app.db_client
         )
     if do_reset == 1:
-        _ = await chunk_model.delete_chunks_by_project_id(
-            project_id=project.project_id
-        )
-        _ = await request.app.vectordb_client.delete_collection(
-            collection_name=nlp_Controller.create_collection_name(project_id=project.project_id)
+        _ = await reset_project_processing_state(
+            chunk_model=chunk_model,
+            vectordb_client=request.app.vectordb_client,
+            collection_name=nlp_Controller.create_collection_name(project_id=project.project_id),
+            project_id=project.project_id,
         )
 
 
