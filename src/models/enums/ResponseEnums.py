@@ -28,5 +28,11 @@ class ResponseStatus(Enum):
     PROJECT_DELETE_SUCCESS="project_delete_success"
     PROJECT_DELETE_FAILED="project_delete_failed"
     PROJECT_ID_ERROR="project_id_error"
-    
+    STT_SUCCESS = "stt_success"
+    STT_FAILED = "stt_failed"
+    STT_TIMEOUT = "stt_timeout"
+    TTS_FAILED = "tts_failed"
+    VOICE_CHAT_SUCCESS = "voice_chat_success"
+    VOICE_CHAT_FAILED = "voice_chat_failed"
+    VOICE_CHAT_TIMEOUT = "voice_chat_timeout"
 
