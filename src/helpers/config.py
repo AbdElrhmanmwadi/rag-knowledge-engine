@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List,Optional
 
 class Settings(BaseSettings):
     APP_NAME: str
@@ -40,6 +40,25 @@ class Settings(BaseSettings):
     VECTOR_DB_DISTANCE_METHOD: str
     PRIMARY_LANG: str 
     DEFAULT_LANG: str
+
+    # =========================
+    # Voice (STT / TTS)
+    # =========================
+    STT_BACKEND: str = "FASTER_WHISPER"
+    STT_MODEL_SIZE: str = "small"
+    STT_DEVICE: str = "cpu"
+    STT_COMPUTE_TYPE: str = "int8"
+    STT_TIMEOUT_SECONDS: int = 180
+    STT_WARMUP_ON_STARTUP: bool = True
+    STT_WARMUP_TIMEOUT_SECONDS: int = 1000
+
+    TTS_BACKEND: str = "PIPER"
+    PIPER_EXE_PATH: str = None
+    PIPER_MODEL_PATH: str = None
+
+    # Optional: allow non-wav uploads (mp3/m4a/...) and convert via ffmpeg
+    FFMPEG_PATH: Optional[str] = None
+    FFMPEG_TIMEOUT_SECONDS: int = 60
 
     class Config:
         env_file = ".env"
