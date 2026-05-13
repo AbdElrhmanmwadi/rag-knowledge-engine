@@ -1,5 +1,6 @@
 import os
 
+from fastapi import status
 from stores.translation.TranslationExceptions import TranslationException
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
@@ -98,7 +99,8 @@ class TranslationController(BaseController):
                     "source_asset_id": source_asset.asset_id,
                     "translation_job_id": translation_job.job_id,
                     "source_lang": translation_job.source_lang,
-                    "target_lang": translation_job.target_lang
+                    "target_lang": translation_job.target_lang,
+                    "download_name": translated_file_name
                 }
             )
             translated_asset = await asset_model.create_asset(asset=translated_asset)
@@ -148,8 +150,39 @@ class TranslationController(BaseController):
             "status": translation_job.status,
             "result_asset_id": translation_job.result_asset_id,
             "result_file_id": result_asset.asset_name if result_asset else None,
+            "download_url": f"/translate/download/{translation_job.job_id}" if result_asset else None,
             "error_message": translation_job.error_message
         }
+
+    async def get_translation_download(self, job_id: int):
+        translation_job_model = await TranslationJobModel.create_instance(db_client=self.db_client)
+        asset_model = await AssetModel.create_instance(db_client=self.db_client)
+
+        translation_job = await translation_job_model.get_job(job_id=job_id)
+        if translation_job is None:
+            return None, "Translation job was not found", status.HTTP_404_NOT_FOUND
+
+        if translation_job.status != "completed" or translation_job.result_asset_id is None:
+            return None, "Translated file is not ready for download yet", status.HTTP_409_CONFLICT
+
+        translated_asset = await asset_model.get_asset_by_id(asset_id=translation_job.result_asset_id)
+        if translated_asset is None:
+            return None, "Translated file asset was not found", status.HTTP_404_NOT_FOUND
+
+        translated_file_path = self._build_project_file_path(
+            project_id=translation_job.project_id,
+            file_name=translated_asset.asset_name
+        )
+        if not os.path.exists(translated_file_path):
+            return None, "Translated file was not found on disk", status.HTTP_404_NOT_FOUND
+
+        asset_config = translated_asset.asset_config or {}
+        download_name = asset_config.get("download_name") or translated_asset.asset_name
+
+        return {
+            "file_path": translated_file_path,
+            "download_name": download_name
+        }, None, status.HTTP_200_OK
 
     def _build_project_file_path(self, project_id: int, file_name: str):
         project_files_path = ProjectController().get_project_files_path(project_id=str(project_id))

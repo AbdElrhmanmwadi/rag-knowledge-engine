@@ -3,6 +3,7 @@ import json
 import socket
 import time
 import uuid
+from email.message import Message
 from http.client import RemoteDisconnected
 from typing import Optional
 from urllib import error, request
@@ -258,7 +259,8 @@ class LibreTranslateProvider(TranslationProviderInterface):
         for attempt in range(1, attempts + 1):
             try:
                 with request.urlopen(http_request, timeout=120.0) as response:
-                    return response.read()
+                    response_body = response.read()
+                    return self._parse_file_translation_response(response, response_body)
             except error.HTTPError as exc:
                 error_payload = exc.read().decode("utf-8", errors="replace")
                 raise TranslationException(
@@ -292,6 +294,113 @@ class LibreTranslateProvider(TranslationProviderInterface):
             api_error_code="connection",
             details={"error": str(last_error)}
         )
+
+    def _parse_file_translation_response(self, response, response_body: bytes) -> bytes:
+        content_type = self._get_response_content_type(response)
+        is_json_response = "application/json" in content_type.lower()
+
+        if not is_json_response:
+            stripped_body = response_body.lstrip()
+            is_json_response = stripped_body.startswith(b"{") or stripped_body.startswith(b"[")
+
+        if not is_json_response:
+            return response_body
+
+        try:
+            response_payload = json.loads(response_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise TranslationException(
+                "LibreTranslate returned an invalid file translation response",
+                api_error_code="invalid_response",
+                details={"content_type": content_type, "error": str(exc)}
+            ) from exc
+
+        translated_file_url = response_payload.get("translatedFileUrl")
+        if translated_file_url:
+            return self._download_translated_file_with_retries(translated_file_url)
+
+        error_message = response_payload.get("error")
+        if error_message:
+            raise TranslationException(
+                f"LibreTranslate file translation failed: {error_message}",
+                api_error_code="invalid_response",
+                details=response_payload
+            )
+
+        raise TranslationException(
+            "LibreTranslate file response did not include translatedFileUrl",
+            api_error_code="invalid_response",
+            details=response_payload
+        )
+
+    def _download_translated_file_with_retries(self, translated_file_url: str) -> bytes:
+        attempts = self.max_retries + 1
+        last_error = None
+        download_request = request.Request(url=translated_file_url, method="GET")
+
+        for attempt in range(1, attempts + 1):
+            try:
+                with request.urlopen(download_request, timeout=120.0) as response:
+                    return response.read()
+            except error.HTTPError as exc:
+                error_payload = exc.read().decode("utf-8", errors="replace")
+                raise TranslationException(
+                    f"LibreTranslate download HTTP {exc.code}: {error_payload}",
+                    api_error_code=str(exc.code),
+                    details={
+                        "status_code": exc.code,
+                        "response": error_payload,
+                        "translated_file_url": translated_file_url
+                    }
+                ) from exc
+            except error.URLError as exc:
+                last_error = exc.reason
+                if self._should_retry(exc.reason, attempt, attempts):
+                    self._sleep_before_retry(attempt)
+                    continue
+                raise TranslationException(
+                    self._build_connection_error_message(exc.reason, attempt, attempts),
+                    api_error_code="connection",
+                    details={"reason": str(exc.reason), "translated_file_url": translated_file_url}
+                ) from exc
+            except (ConnectionResetError, RemoteDisconnected, TimeoutError, socket.timeout, OSError) as exc:
+                last_error = exc
+                if self._should_retry(exc, attempt, attempts):
+                    self._sleep_before_retry(attempt)
+                    continue
+                raise TranslationException(
+                    self._build_connection_error_message(exc, attempt, attempts),
+                    api_error_code="connection",
+                    details={
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "translated_file_url": translated_file_url
+                    }
+                ) from exc
+
+        raise TranslationException(
+            self._build_connection_error_message(last_error, attempts, attempts),
+            api_error_code="connection",
+            details={"error": str(last_error), "translated_file_url": translated_file_url}
+        )
+
+    def _get_response_content_type(self, response) -> str:
+        headers = getattr(response, "headers", None)
+        if headers is None:
+            return ""
+
+        if isinstance(headers, Message):
+            return headers.get_content_type() or ""
+
+        get_content_type = getattr(headers, "get_content_type", None)
+        if callable(get_content_type):
+            return get_content_type() or ""
+
+        get_header = getattr(headers, "get", None)
+        if callable(get_header):
+            return get_header("Content-Type", "") or ""
+
+        return ""
 
     def _send_request_with_retries(self, http_request: request.Request):
         """Send text translation request with retries, returning parsed JSON response."""

@@ -56,5 +56,22 @@ class ProjectModel(BaseDataModel):
                 result = await session.execute(query)
                 projects = result.scalars().all()
                 return projects,total_page
+    async def delete_project_by_id(self, project_id: str):
+        try:
+            project_id_int = int(project_id)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"project_id must be an integer string, got: {project_id!r}") from e
+
+        async with self.db_client() as session:
+            query = select(Project).where(Project.project_id == project_id_int)
+            result = await session.execute(query)
+
+            project_obj = result.scalar_one_or_none()
+
+            if project_obj is not None:
+                await session.delete(project_obj)
+                await session.commit()
+
+            return project_obj
             
         

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from controllers import TranslationController
 from models.enums.ResponseEnums import ResponseStatus
@@ -69,4 +69,27 @@ async def get_translation_status(request: Request, job_id: int):
             "signal": ResponseStatus.TRANSLATION_STATUS_SUCCESS.value,
             "job": translation_job_status
         }
+    )
+
+
+@translation_router.get("/download/{job_id}")
+async def download_translated_file(request: Request, job_id: int):
+    translation_controller = TranslationController(
+        db_client=request.app.db_client,
+        translation_provider=request.app.translation_provider
+    )
+    download_payload, error_message, response_status = await translation_controller.get_translation_download(job_id=job_id)
+    if download_payload is None:
+        return JSONResponse(
+            status_code=response_status,
+            content={
+                "signal": ResponseStatus.TRANSLATION_FAILED.value,
+                "message": error_message
+            }
+        )
+
+    return FileResponse(
+        path=download_payload["file_path"],
+        filename=download_payload["download_name"],
+        media_type="application/octet-stream"
     )

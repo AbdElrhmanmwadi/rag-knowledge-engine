@@ -1,7 +1,10 @@
+import shutil
+
 from fastapi import FastAPI,Depends,APIRouter, UploadFile,status,Request
 from fastapi.responses import JSONResponse
 from openai import models
 from helpers.config import Settings, get_settings
+from helpers.process_reset import reset_project_processing_state
 from controllers import DataController,ProjectController,ProcessController
 import aiofiles 
 import logging
@@ -116,11 +119,11 @@ async def process_endpoint(request:Request,project_id: int, process_request: pro
             db_client=request.app.db_client
         )
     if do_reset == 1:
-        _ = await chunk_model.delete_chunks_by_project_id(
-            project_id=project.project_id
-        )
-        _ = await request.app.vectordb_client.delete_collection(
-            collection_name=nlp_Controller.create_collection_name(project_id=project.project_id)
+        _ = await reset_project_processing_state(
+            chunk_model=chunk_model,
+            vectordb_client=request.app.vectordb_client,
+            collection_name=nlp_Controller.create_collection_name(project_id=project.project_id),
+            project_id=project.project_id,
         )
 
 
@@ -233,6 +236,38 @@ async def delete_file(request:Request,project_id:int,file_id:str):
             "deleted_file": file_id
         }
     )
+
+@data_router.delete("/delete_all/{project_id}")
+async def delete_all_files(request:Request,project_id:int):
+    project_model= await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create(project_id=str(project_id))
+    project= await project_model.delete_project_by_id(project_id=str(project_id))
+    if project is None: 
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "signal": ResponseStatus.PROJECT_ID_ERROR.value,
+            }
+        )
+    project_path=ProjectController().get_project_files_path(project_id=str(project_id))
+    try:
+        if os.path.exists(project_path):
+            shutil.rmtree(project_path)
+    except Exception as e:
+        logger.error(f"Error deleting project: {e}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"status": ResponseStatus.PROJECT_DELETE_FAILED.value})
+    
+    return JSONResponse(
+        content={
+            "signal": ResponseStatus.PROJECT_DELETE_SUCCESS.value,
+            "deleted_project": project_id
+        }
+    )
+
+
+    
+
+
 
 
     
