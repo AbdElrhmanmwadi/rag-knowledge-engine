@@ -1,9 +1,14 @@
+import asyncio
+import logging
+
 from fastapi import FastAPI
-from routes import base, data,nlp,translation_router
+from controllers.VoiceController import VoiceController
+from routes import base, data, nlp, translation_router, voice
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
 from stores.llm.providers.LLMProviderFactory import LLMProviderFactory
+from stores.llm.voice import VoiceProviderFactory
 
 from stores.translation.TranslationProviderFactory import TranslationProviderFactory
 from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory
@@ -11,6 +16,22 @@ from stores.llm.template_parser import TemplateParser
 
 
 app = FastAPI()
+logger = logging.getLogger("uvicorn.error")
+
+
+async def warm_up_stt(app: FastAPI, settings) -> None:
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(app.state.voice_controller.warm_up_stt),
+            timeout=settings.STT_WARMUP_TIMEOUT_SECONDS,
+        )
+        logger.info("STT warm-up completed")
+    except asyncio.TimeoutError:
+        logger.warning("STT warm-up timed out after %ss", settings.STT_WARMUP_TIMEOUT_SECONDS)
+    except Exception:
+        logger.exception("STT warm-up failed")
+
+
 @app.on_event("startup")
 async def startup_event():
     settings = get_settings()
@@ -19,6 +40,7 @@ async def startup_event():
     app.db_client = sessionmaker(app.db_engine, expire_on_commit=False, class_=AsyncSession)
     LLM_Provider_Factory=LLMProviderFactory(settings)
     translation_provider_factory = TranslationProviderFactory(settings)
+    voice_provider_factory = VoiceProviderFactory(settings)
     vectordb_provider_factory = VectorDBProviderFactory(config=settings,db_client=app.db_client)
     
 
@@ -34,8 +56,14 @@ async def startup_event():
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
     if app.vectordb_client is None:
         raise ValueError(f"Failed to create vector database client. Unsupported provider: {settings.VECTOR_DB_BACKEND}. Supported providers: QDRANT, PGVECTOR")
-    
+    voice_provider = voice_provider_factory.create(
+        stt_provider=settings.STT_BACKEND,
+        tts_provider=settings.TTS_BACKEND,
+    )
+    app.state.voice_controller = VoiceController(settings=settings, voice_provider=voice_provider)
     await app.vectordb_client.connect()
+    if settings.STT_WARMUP_ON_STARTUP:
+        asyncio.create_task(warm_up_stt(app, settings))
     app.template_parser= TemplateParser(
         language=settings.PRIMARY_LANG,
         defult_language=settings.DEFAULT_LANG
@@ -54,3 +82,4 @@ app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
 app.include_router(translation_router.translation_router)
+app.include_router(voice.voice_router)
