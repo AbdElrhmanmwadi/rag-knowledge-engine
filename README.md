@@ -189,8 +189,4 @@ Voice endpoints now use shared response signals from `ResponseStatus`, including
 - `voice_chat_failed`
 - `voice_chat_timeout`
 
-## Author
 
-Abd elrahman Ahmed wadi
-
-- GitHub: `https://github.com/AbdElrhmanmwadi`
