@@ -24,7 +24,10 @@ class VoiceController:
         return base64.b64encode(wav_bytes).decode("ascii")
 
     def unique_audio_path(self, project_id: str, suffix: str) -> str:
-        base_dir = Path(__file__).resolve().parent.parent / "assets" / "voice" / str(project_id)
+        if self.settings.STORAGE_ROOT:
+            base_dir = Path(self.settings.STORAGE_ROOT) / "voice" / str(project_id)
+        else:
+            base_dir = Path(__file__).resolve().parent.parent / "assets" / "voice" / str(project_id)
         base_dir.mkdir(parents=True, exist_ok=True)
         name = f"{uuid.uuid4().hex}{suffix}"
         return str(base_dir / name)
