@@ -199,3 +199,4 @@ class TranslationController(BaseController):
             for char in str(value or "").strip().lower()
         )
         return sanitized_value.strip("_") or "translated"
+    

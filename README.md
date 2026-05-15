@@ -128,6 +128,34 @@ Swagger:
 http://127.0.0.1:8000/docs
 ```
 
+## Deploy on Railway
+
+The repository now includes:
+
+- `Dockerfile`
+- `railway.json`
+- `.dockerignore`
+
+Recommended Railway setup:
+
+1. Create a web service from this repository.
+2. Add a PostgreSQL service.
+3. Attach a persistent `Volume` and mount it at `/data`.
+4. Set `STORAGE_ROOT=/data/rag`.
+5. Add the required environment variables from `src/.env.example`.
+
+Recommended start behavior on Railway:
+
+- The container runs `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Healthcheck path: `/api/v1/welcome`
+
+Notes:
+
+- File uploads and temporary voice files should use the mounted volume through `STORAGE_ROOT`.
+- `PGVECTOR` is the simplest production option on Railway for this project.
+- If you use `LIBRETRANSLATE`, point `TRANSLATION_BASE_URL` and `TRANSLATION_FILE_ENDPOINT_URL` to another Railway service or an external API.
+- Voice features may need extra Linux-compatible runtime assets for `piper` models and binaries.
+
 ## Main API Endpoints
 
 ### Data
@@ -189,8 +217,3 @@ Voice endpoints now use shared response signals from `ResponseStatus`, including
 - `voice_chat_failed`
 - `voice_chat_timeout`
 
-## Author
-
-Abd elrahman Ahmed wadi
-
-- GitHub: `https://github.com/AbdElrhmanmwadi`

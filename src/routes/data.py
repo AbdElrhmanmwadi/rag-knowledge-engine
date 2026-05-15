@@ -263,6 +263,57 @@ async def delete_all_files(request:Request,project_id:int):
             "deleted_project": project_id
         }
     )
+@data_router.get("/file/{project_id}/{file_id}")
+async def get_file_info(request: Request, project_id: int, file_id: str):
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+
+    project = await project_model.get_project_or_create(project_id=str(project_id))
+
+    asset_record = await asset_model.get_asset_record(
+        asset_project_id=project.project_id,
+        asset_name=file_id
+    )
+
+    if asset_record is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={
+                "signal": ResponseStatus.FILE_ID_ERROR.value,
+                "message": "File not found"
+            }
+        )
+
+    file_path = os.path.join(
+        ProjectController().get_project_files_path(project_id=str(project_id)),
+        file_id
+    )
+
+    file_exists = os.path.exists(file_path)
+
+    file_size = None
+    if file_exists:
+        try:
+            file_size = os.path.getsize(file_path)
+        except Exception as e:
+            logger.error(f"Error reading file size: {e}")
+
+    return JSONResponse(
+        content={
+            "signal": ResponseStatus.FILE_LIST_SUCCESS.value,
+            "file": {
+                "file_id": asset_record.asset_name,
+                "asset_id": asset_record.asset_id,
+                "project_id": project.project_id,
+                "file_size": file_size or asset_record.asset_size,
+                "asset_type": asset_record.asset_type,
+                "exists_on_disk": file_exists,
+                "file_path": file_path if file_exists else None,
+                "asset_config": asset_record.asset_config or {}
+            }
+        }
+    )
+
 
 
     
