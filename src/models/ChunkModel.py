@@ -1,4 +1,3 @@
-from bson import ObjectId
 from sqlalchemy import func, select
 
 from models.db_schemes.minirag.scheme import DataChunk
