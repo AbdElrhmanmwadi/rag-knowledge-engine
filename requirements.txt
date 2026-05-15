@@ -42,5 +42,5 @@ alembic==1.14.0
 # Voice (local STT)
 # =========================
 faster-whisper==1.1.1
-bson==0.5.11
+bson==0.5.10
 
