@@ -17,6 +17,4 @@ RUN pip install --upgrade pip \
 
 COPY src ./src
 
-WORKDIR /app/src
-
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
