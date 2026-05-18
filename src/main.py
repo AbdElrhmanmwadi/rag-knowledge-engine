@@ -36,6 +36,8 @@ async def warm_up_stt(app: FastAPI, settings) -> None:
 @app.on_event("startup")
 async def startup_event():
     settings = get_settings()
+    print("PGHOST =", os.getenv("PGHOST"))
+    print("DATABASE_URL =", os.getenv("DATABASE_URL"))
     # Railway توفر DATABASE_URL تلقائياً, أو استخدم المتغيرات اليدوية
     database_url = os.getenv('DATABASE_URL')
     if database_url:
@@ -69,7 +71,20 @@ async def startup_event():
         tts_provider=settings.TTS_BACKEND,
     )
     app.state.voice_controller = VoiceController(settings=settings, voice_provider=voice_provider)
-    await app.vectordb_client.connect()
+    # Retry connecting to vector DB because managed databases may not be immediately ready
+    max_retries = 6
+    retry_delay = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            await app.vectordb_client.connect()
+            break
+        except Exception as e:
+            logger.warning("Attempt %s/%s: vectordb connect failed: %s", attempt, max_retries, e)
+            if attempt == max_retries:
+                logger.exception("vectordb connection failed after %s attempts", max_retries)
+                raise
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 30)
     if settings.STT_WARMUP_ON_STARTUP:
         asyncio.create_task(warm_up_stt(app, settings))
     app.template_parser= TemplateParser(
