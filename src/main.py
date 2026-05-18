@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from fastapi import FastAPI
 from controllers.VoiceController import VoiceController
@@ -35,7 +36,14 @@ async def warm_up_stt(app: FastAPI, settings) -> None:
 @app.on_event("startup")
 async def startup_event():
     settings = get_settings()
-    postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USERNAME}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+    # Railway توفر DATABASE_URL تلقائياً, أو استخدم المتغيرات اليدوية
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        # تحويل postgres إلى postgresql+asyncpg إذا لزم الحال
+        postgres_conn = database_url.replace('postgres://', 'postgresql+asyncpg://')
+    else:
+        postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USERNAME}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+    
     app.db_engine = create_async_engine(postgres_conn)
     app.db_client = sessionmaker(app.db_engine, expire_on_commit=False, class_=AsyncSession)
     LLM_Provider_Factory=LLMProviderFactory(settings)
