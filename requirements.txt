@@ -6,6 +6,7 @@ uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
 aiofiles==23.2.1
+prometheus-client==0.20.0
 
 # =========================
 # Pydantic
@@ -37,10 +38,13 @@ openpyxl==3.1.5
 SQLAlchemy==2.0.36
 asyncpg==0.30.0
 alembic==1.14.0
+passlib[bcrypt]==1.7.4
+PyJWT==2.10.1
+resend==2.6.0
+email-validator==2.2.0
 
 # =========================
 # Voice (local STT)
 # =========================
 faster-whisper==1.1.1
 bson==0.5.10
-

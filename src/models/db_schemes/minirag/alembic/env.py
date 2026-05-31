@@ -1,4 +1,6 @@
 from logging.config import fileConfig
+from pathlib import Path
+import sys
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -6,7 +8,12 @@ from sqlalchemy import pool
 
 from alembic import context
 
+SRC_ROOT = Path(__file__).resolve().parents[4]
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
 from scheme.minirag_base import SQLAlchemyBase
+from models import token_model, user_model  # noqa: F401
 
 
 # this is the Alembic Config object, which provides
