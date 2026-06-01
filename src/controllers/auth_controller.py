@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from secrets import token_urlsafe
+import re
+from secrets import randbelow, token_urlsafe
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
@@ -7,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from helpers.config import Settings
 from helpers.email import send_verification_email
+from helpers.google_auth import verify_google_id_token
 from helpers.jwt import create_access_token, create_email_verification_token, decode_token
 from helpers.security import hash_password, verify_password
 from models.token_model import RefreshToken
 from models.user_model import User
-from schemas.auth import LoginRequest, RegisterRequest
+from routes.schemes.auth  import LoginRequest, RegisterRequest
 
 
 class AuthController:
@@ -30,6 +32,7 @@ class AuthController:
             email=payload.email,
             username=payload.username,
             hashed_password=hash_password(payload.password),
+            auth_provider="local",
             is_verified=False,
         )
         db.add(user)
@@ -48,23 +51,49 @@ class AuthController:
     @staticmethod
     async def login(payload: LoginRequest, db: AsyncSession, settings: Settings) -> dict[str, str]:
         user = await db.scalar(select(User).where(User.email == payload.email))
-        if not user or not verify_password(payload.password, user.hashed_password):
+        if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
+            if user and not user.hashed_password:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This account uses Google sign-in",
+                )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
         if not user.is_verified:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email is not verified")
 
-        access_token = create_access_token(user_id=user.id, settings=settings)
-        refresh_token, expires_at = AuthController._new_refresh_token(settings)
+        return await AuthController._issue_tokens(user, db, settings)
 
-        db.add(RefreshToken(token=refresh_token, user_id=user.id, expires_at=expires_at))
-        await db.commit()
+    @staticmethod
+    async def google_login(id_token: str, db: AsyncSession, settings: Settings) -> dict[str, str]:
+        google_user = verify_google_id_token(id_token, settings=settings)
 
-        return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "bearer",
-        }
+        user = await db.scalar(select(User).where(User.google_id == google_user.google_id))
+        if not user:
+            user = await db.scalar(select(User).where(User.email == google_user.email))
+            if user:
+                if user.google_id and user.google_id != google_user.google_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Email linked to a different Google account",
+                    )
+                user.google_id = google_user.google_id
+                user.is_verified = True
+                user.auth_provider = "both" if user.hashed_password else "google"
+            else:
+                username = await AuthController._generate_unique_username(google_user.email, db)
+                user = User(
+                    email=google_user.email,
+                    username=username,
+                    hashed_password=None,
+                    google_id=google_user.google_id,
+                    auth_provider="google",
+                    is_verified=True,
+                )
+                db.add(user)
+                await db.flush()
+
+        return await AuthController._issue_tokens(user, db, settings)
 
     @staticmethod
     async def refresh(refresh_token: str, db: AsyncSession, settings: Settings) -> dict[str, str]:
@@ -104,6 +133,32 @@ class AuthController:
             await db.commit()
 
         return {"message": "Email verified successfully"}
+
+    @staticmethod
+    async def _issue_tokens(user: User, db: AsyncSession, settings: Settings) -> dict[str, str]:
+        access_token = create_access_token(user_id=user.id, settings=settings)
+        refresh_token, expires_at = AuthController._new_refresh_token(settings)
+
+        db.add(RefreshToken(token=refresh_token, user_id=user.id, expires_at=expires_at))
+        await db.commit()
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+        }
+
+    @staticmethod
+    async def _generate_unique_username(email: str, db: AsyncSession) -> str:
+        base = re.sub(r"[^A-Za-z0-9_.-]", "", email.split("@", 1)[0])[:60]
+        if len(base) < 3:
+            base = "user"
+
+        username = base
+        while await db.scalar(select(User).where(User.username == username)):
+            username = f"{base}_{randbelow(9000) + 1000}"[:80]
+
+        return username
 
     @staticmethod
     def _new_refresh_token(settings: Settings) -> tuple[str, datetime]:
