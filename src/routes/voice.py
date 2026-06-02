@@ -9,9 +9,13 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 
 from controllers.NLPController import NLPController
+from helpers.auth_dependencies import get_current_user
 from helpers.config import Settings, get_settings
-from models.ProjectModel import ProjectModel
+from helpers.db import get_db
 from models.enums.ResponseEnums import ResponseStatus
+from models.user_model import User
+from services.project_access import get_project_for_user
+from sqlalchemy.ext.asyncio import AsyncSession
 from routes.schemes.voice import TTSRequest
 
 
@@ -122,15 +126,13 @@ async def voice_chat_endpoint(
     limit: int = Form(30),
     return_audio_base64: bool = Form(True),
     language: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     app_settings: Settings = Depends(get_settings),
 ):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
-    project = await project_model.get_project_or_create(project_id=project_id)
-    if not project:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"signal": ResponseStatus.PROJECT_NOT_FOUND.value},
-        )
+    project = await get_project_for_user(
+        db, project_id=project_id, user_id=current_user.id, create_if_missing=True
+    )
 
     voice = request.app.state.voice_controller
     ext = os.path.splitext(audio.filename or "audio")[1] or ".bin"
