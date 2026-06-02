@@ -26,3 +26,7 @@ class User(SQLAlchemyBase):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    projects: Mapped[List["Project"]] = relationship(
+        "Project",
+        back_populates="owner",
+    )

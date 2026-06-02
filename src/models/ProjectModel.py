@@ -22,7 +22,18 @@ class ProjectModel(BaseDataModel):
             await session.refresh(project)
             return project
         
-    async def get_project_or_create(self, project_id: str):
+    async def get_project_by_id(self, project_id: str):
+        try:
+            project_id_int = int(project_id)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"project_id must be an integer string, got: {project_id!r}") from e
+
+        async with self.db_client() as session:
+            query = select(Project).where(Project.project_id == project_id_int)
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    async def get_project_or_create(self, project_id: str, owner_id: int):
         try:
             project_id_int = int(project_id)
         except (TypeError, ValueError) as e:
@@ -35,7 +46,7 @@ class ProjectModel(BaseDataModel):
             project_obj = result.scalar_one_or_none()
 
             if project_obj is None:
-                new_project = Project(project_id=project_id_int)
+                new_project = Project(project_id=project_id_int, owner_id=owner_id)
                 session.add(new_project)
                 await session.commit()
                 await session.refresh(new_project)
