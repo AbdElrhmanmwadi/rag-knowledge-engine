@@ -29,7 +29,9 @@ class TranslationController(BaseController):
         asset_model = await AssetModel.create_instance(db_client=self.db_client)
         translation_job_model = await TranslationJobModel.create_instance(db_client=self.db_client)
 
-        project = await project_model.get_project_or_create(project_id=str(project_id))
+        project = await project_model.get_project_by_id(project_id=str(project_id))
+        if project is None:
+            return None, "Project was not found"
         source_asset = await asset_model.get_asset_record(
             asset_project_id=project.project_id,
             asset_name=file_id

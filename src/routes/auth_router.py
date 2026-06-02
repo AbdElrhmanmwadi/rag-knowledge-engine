@@ -1,11 +1,11 @@
-from collections.abc import AsyncGenerator
-
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from controllers.auth_controller import AuthController
 from helpers.config import Settings, get_settings
-from schemas.auth import (
+from helpers.db import get_db
+from routes.schemes.auth import (
+    GoogleLoginRequest,
     LoginRequest,
     LogoutRequest,
     MessageResponse,
@@ -17,11 +17,6 @@ from schemas.auth import (
 
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
-
-
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    async with request.app.db_client() as session:
-        yield session
 
 
 @auth_router.post("/register", response_model=MessageResponse)
@@ -40,6 +35,15 @@ async def login(
     settings: Settings = Depends(get_settings),
 ):
     return await AuthController.login(payload, db, settings)
+
+
+@auth_router.post("/google", response_model=TokenResponse)
+async def google_login(
+    payload: GoogleLoginRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return await AuthController.google_login(payload.id_token, db, settings)
 
 
 @auth_router.post("/refresh", response_model=TokenResponse)

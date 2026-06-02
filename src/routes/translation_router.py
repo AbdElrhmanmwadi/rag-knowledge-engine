@@ -1,9 +1,14 @@
-from fastapi import APIRouter, BackgroundTasks, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from controllers import TranslationController
+from helpers.auth_dependencies import get_current_user
+from helpers.db import get_db
 from models.enums.ResponseEnums import ResponseStatus
+from models.user_model import User
 from routes.schemes.translation import TranslationFileRequest
+from services.project_access import get_project_for_user, get_translation_job_for_user
 
 
 translation_router = APIRouter(
@@ -13,7 +18,19 @@ translation_router = APIRouter(
 
 
 @translation_router.post("/file")
-async def translate_file(request: Request, background_tasks: BackgroundTasks, translation_request: TranslationFileRequest):
+async def translate_file(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    translation_request: TranslationFileRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_for_user(
+        db,
+        project_id=translation_request.project_id,
+        user_id=current_user.id,
+        create_if_missing=False,
+    )
     translation_controller = TranslationController(
         db_client=request.app.db_client,
         translation_provider=request.app.translation_provider
@@ -48,7 +65,13 @@ async def translate_file(request: Request, background_tasks: BackgroundTasks, tr
 
 
 @translation_router.get("/status/{job_id}")
-async def get_translation_status(request: Request, job_id: int):
+async def get_translation_status(
+    request: Request,
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_translation_job_for_user(db, job_id=job_id, user_id=current_user.id)
     translation_controller = TranslationController(
         db_client=request.app.db_client,
         translation_provider=request.app.translation_provider
@@ -73,7 +96,13 @@ async def get_translation_status(request: Request, job_id: int):
 
 
 @translation_router.get("/download/{job_id}")
-async def download_translated_file(request: Request, job_id: int):
+async def download_translated_file(
+    request: Request,
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_translation_job_for_user(db, job_id=job_id, user_id=current_user.id)
     translation_controller = TranslationController(
         db_client=request.app.db_client,
         translation_provider=request.app.translation_provider

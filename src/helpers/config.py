@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "Voxora <noreply@your-domain.com>"
     FRONTEND_BASE_URL: str = "https://your-domain.com"
+    GOOGLE_CLIENT_ID: str = ""
 
     class Config:
         env_file = ".env"
