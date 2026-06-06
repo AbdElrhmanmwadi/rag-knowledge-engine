@@ -9,6 +9,7 @@ from routes.schemes.auth import (
     LoginRequest,
     LogoutRequest,
     MessageResponse,
+    PasswordResetRequest,
     RefreshRequest,
     TokenResponse,
     RegisterRequest,
@@ -70,8 +71,8 @@ async def verify_email(
 
 @auth_router.post("/request-password-reset", response_model=MessageResponse)
 async def request_password_reset(
-    email: str,
+    payload: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    return await AuthController.request_password_reset(email, db, settings)
+    return await AuthController.request_password_reset(payload, db, settings)
