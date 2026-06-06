@@ -164,3 +164,19 @@ class AuthController:
     def _new_refresh_token(settings: Settings) -> tuple[str, datetime]:
         expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         return token_urlsafe(64), expires_at
+    async def request_password_reset(
+        email: str,
+        db: AsyncSession,
+        settings: Settings,
+    ) -> dict[str, str]:
+        user = await db.scalar(select(User).where(User.email == email))
+        if user:
+            reset_token = create_email_verification_token(
+                user_id=user.id,
+                email=user.email,
+                settings=settings,
+                token_type="password_reset"
+            )
+            await send_verification_email(user.email, reset_token, settings, subject="Password Reset")
+
+        return {"message": "If an account with that email exists, a password reset link has been sent"}
