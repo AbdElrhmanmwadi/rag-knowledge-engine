@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     FFMPEG_TIMEOUT_SECONDS: int = 60
 
     # =========================
+    # Agent
+    # =========================
+    AGENT_DEFAULT_RETRIEVAL_LIMIT: int = 5
+    AGENT_MAX_TOOL_STEPS: int = 4
+    AGENT_MAX_OUTPUT_TOKENS: int = 500
+
+    # =========================
     # Auth
     # =========================
     JWT_SECRET_KEY: str = "replace-with-a-strong-random-secret"

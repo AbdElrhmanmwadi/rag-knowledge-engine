@@ -4,7 +4,7 @@ import os
 
 from fastapi import FastAPI
 from controllers.VoiceController import VoiceController
-from routes import auth_router, base, data, nlp, translation_router, voice
+from routes import agent, auth_router, base, data, nlp, translation_router, voice
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
@@ -13,10 +13,19 @@ from stores.llm.voice import VoiceProviderFactory
 
 from stores.translation.TranslationProviderFactory import TranslationProviderFactory
 from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory
-from stores.llm.template_parser import TemplateParser   
+from stores.llm.template_parser import TemplateParser  
+from fastapi.middleware.cors import CORSMiddleware 
 
 
 app = FastAPI()
+
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=["http://localhost:5173", "http://localhost:5174"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
+)
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -107,3 +116,4 @@ app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
 app.include_router(translation_router.translation_router)
 app.include_router(voice.voice_router)
+app.include_router(agent.agent_router)

@@ -35,4 +35,7 @@ class ResponseStatus(Enum):
     VOICE_CHAT_SUCCESS = "voice_chat_success"
     VOICE_CHAT_FAILED = "voice_chat_failed"
     VOICE_CHAT_TIMEOUT = "voice_chat_timeout"
-
+    AGENT_CHAT_SUCCESS = "agent_chat_success"
+    AGENT_SESSIONS_SUCCESS = "agent_sessions_success"
+    AGENT_SESSION_SUCCESS = "agent_session_success"
+    AGENT_SESSION_DELETED = "agent_session_deleted"

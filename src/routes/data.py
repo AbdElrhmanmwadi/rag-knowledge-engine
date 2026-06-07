@@ -210,8 +210,12 @@ async def list_files(
     )
     files_list = [
         {
-            "file_id": record.asset_name,
+            "file_id": record.asset_id,
             "file_size": record.asset_size,
+            "file_name": record.asset_name,
+            "file_type": record.asset_type,
+            "file_created_at": record.created_at.isoformat() if getattr(record, "created_at", None) is not None else None,
+            "file_updated_at": record.updated_at.isoformat() if getattr(record, "updated_at", None) is not None else None,
         }
         for record in project_files
     ]

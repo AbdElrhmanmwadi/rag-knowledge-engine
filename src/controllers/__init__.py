@@ -3,3 +3,4 @@ from .ProjectController import ProjectController
 from .ProcessController import ProcessController
 from .NLPController import NLPController
 from .TranslationController import TranslationController
+from .AgentController import AgentController

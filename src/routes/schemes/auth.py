@@ -45,3 +45,5 @@ class UserResponse(BaseModel):
     email: EmailStr
     username: str
     is_verified: bool
+class PasswordResetRequest(BaseModel):
+    email: EmailStr

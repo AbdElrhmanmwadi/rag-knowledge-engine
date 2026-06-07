@@ -13,7 +13,7 @@ from helpers.jwt import create_access_token, create_email_verification_token, de
 from helpers.security import hash_password, verify_password
 from models.token_model import RefreshToken
 from models.user_model import User
-from routes.schemes.auth  import LoginRequest, RegisterRequest
+from routes.schemes.auth  import LoginRequest, PasswordResetRequest, RegisterRequest
 
 
 class AuthController:
@@ -164,3 +164,20 @@ class AuthController:
     def _new_refresh_token(settings: Settings) -> tuple[str, datetime]:
         expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         return token_urlsafe(64), expires_at
+    @staticmethod
+    async def request_password_reset(
+        payload: PasswordResetRequest,
+        db: AsyncSession,
+        settings: Settings,
+    ) -> dict[str, str]:
+        user = await db.scalar(select(User).where(User.email == payload.email ))
+        if user:
+            reset_token = create_email_verification_token(
+                user_id=user.id,
+                email=user.email,
+                settings=settings,
+                token_type="password_reset"
+            )
+            await send_verification_email(user.email, reset_token, settings, subject="Password Reset")
+
+        return {"message": "If an account with that email exists, a password reset link has been sent"}
