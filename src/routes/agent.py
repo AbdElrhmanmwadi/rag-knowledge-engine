@@ -26,6 +26,7 @@ def _controller(request: Request, settings: Settings) -> AgentController:
         generation_client=request.app.generation_client,
         template_parser=request.app.template_parser,
         default_limit=settings.AGENT_DEFAULT_RETRIEVAL_LIMIT,
+        max_history_messages=settings.AGENT_MAX_HISTORY_MESSAGES,
     )
 
 
