@@ -70,10 +70,26 @@ def classify_smalltalk(message: str) -> str | None:
     return None
 
 
+_ARABIC_CHARS = re.compile(r"[؀-ۿ]")
+
+
+def detect_lang(text: str) -> str:
+    """Coarse language detection: 'ar' if any Arabic letter is present, else 'en'."""
+    return "ar" if _ARABIC_CHARS.search(text or "") else "en"
+
+
+# Smalltalk replies keyed by language so an Arabic greeting gets an Arabic reply.
 _SMALLTALK_REPLIES = {
-    "greeting": "Hello! Ask me a question about this project and I will use its indexed knowledge to help.",
-    "thanks": "You're welcome! Feel free to ask me anything else about this project.",
-    "farewell": "Goodbye! Come back anytime you have questions about this project.",
+    "en": {
+        "greeting": "Hello! Ask me a question about this project and I will use its indexed knowledge to help.",
+        "thanks": "You're welcome! Feel free to ask me anything else about this project.",
+        "farewell": "Goodbye! Come back anytime you have questions about this project.",
+    },
+    "ar": {
+        "greeting": "مرحباً! اسألني عن هذا المشروع وسأستخدم معرفته المفهرسة لمساعدتك.",
+        "thanks": "على الرحب والسعة! لا تتردّد في سؤالي عن أي شيء آخر يخص المشروع.",
+        "farewell": "إلى اللقاء! عُد متى شئت إن كان لديك أسئلة عن هذا المشروع.",
+    },
 }
 
 
@@ -84,6 +100,8 @@ class AgentState(TypedDict, total=False):
     history: list[dict[str, str]]
     needs_rag: bool
     smalltalk_kind: str | None
+    lang: str
+    search_query: str
     answer: str
     sources: list[dict[str, Any]]
     tool_trace: list[dict[str, str]]
@@ -143,6 +161,7 @@ class AgentService:
     async def _classify_intent(self, state: AgentState) -> AgentState:
         kind = classify_smalltalk(state["message"])
         state["smalltalk_kind"] = kind
+        state["lang"] = detect_lang(state["message"])
         state["needs_rag"] = kind is None
         state.setdefault("tool_trace", []).append(
             {
@@ -154,9 +173,15 @@ class AgentService:
         return state
 
     async def _retrieve(self, state: AgentState) -> AgentState:
+        query = state["message"]
+        if state.get("history"):
+            rewrite = await self.tools.rewrite_query(query=query, history=state["history"])
+            state.setdefault("tool_trace", []).append(self._trace(rewrite))
+            query = rewrite.data or query
+        state["search_query"] = query
         result = await self.tools.rag_search(
             project=state["project"],
-            query=state["message"],
+            query=query,
             limit=state["limit"],
         )
         state["retrieved_documents"] = result.data or []
@@ -166,9 +191,8 @@ class AgentService:
 
     async def _answer(self, state: AgentState) -> AgentState:
         if not state.get("needs_rag"):
-            state["answer"] = _SMALLTALK_REPLIES.get(
-                state.get("smalltalk_kind"), _SMALLTALK_REPLIES["greeting"]
-            )
+            replies = _SMALLTALK_REPLIES.get(state.get("lang"), _SMALLTALK_REPLIES["en"])
+            state["answer"] = replies.get(state.get("smalltalk_kind"), replies["greeting"])
             return state
 
         if not state.get("retrieved_documents"):
@@ -177,7 +201,7 @@ class AgentService:
 
         result = await self.tools.rag_answer(
             project=state["project"],
-            query=state["message"],
+            query=state.get("search_query") or state["message"],
             limit=state["limit"],
             history=state.get("history"),
         )

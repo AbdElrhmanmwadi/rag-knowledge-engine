@@ -50,6 +50,45 @@ class NLPController(BaseController):
             _= await self.vectordb_client.insert_many(collection_name=collection_name,
                                             texts=texts,vectors=vectors,metadata=metadata,record_ids=record_ids)
             return True
+    @traceable(run_type="chain", name="condense_query")
+    async def condense_query(self, query: str, history: list = None) -> str:
+        """Rewrite a follow-up question into a standalone one using chat history.
+
+        Lets retrieval resolve pronouns/ellipsis ("and its size?") that the raw
+        message lacks. Falls back to the original query if there is no history or
+        the model call fails, so retrieval is never worse than before.
+        """
+        if not history:
+            return query
+        lines = []
+        for turn in history[-6:]:
+            content = (turn.get("content") or "").strip()
+            if not content:
+                continue
+            speaker = "User" if (turn.get("role") or "").lower() == "user" else "Assistant"
+            lines.append(f"{speaker}: {content}")
+        if not lines:
+            return query
+        transcript = "\n".join(lines)
+        instruction = (
+            "Given the conversation history and a follow-up question, rewrite the "
+            "follow-up as a standalone question understandable on its own. Keep the "
+            "original language. Reply with ONLY the rewritten question.\n\n"
+            f"Conversation:\n{transcript}\n\nFollow-up: {query}\n\nStandalone question:"
+        )
+        try:
+            result = self.generation_client.genarate_text(
+                prompt=instruction, max_output_tokens=128, chat_history=[]
+            )
+        except Exception as e:
+            logger.warning(f"condense_query failed, using original query: {e}")
+            return query
+        text = getattr(result, "content", None)
+        if text is None:
+            text = result if isinstance(result, str) else getattr(result, "text", None)
+        text = (str(text).strip() if text is not None else "")
+        return text or query
+
     @traceable(run_type="retriever", name="search_in_vectordb")
     async def search_in_vectordb(self,project:Project,text:str,limit:int):
             collection_name = self.create_collection_name(project_id= project.project_id)
