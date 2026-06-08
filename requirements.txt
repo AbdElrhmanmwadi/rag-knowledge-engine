@@ -20,6 +20,7 @@ pydantic-settings>=2.6.1
 langchain-community==0.0.38
 langgraph>=0.2.0
 langchain-text-splitters==0.0.2
+langsmith>=0.1.0
 openai==1.75.0
 cohere==5.5.8
 qdrant-client==1.10.1

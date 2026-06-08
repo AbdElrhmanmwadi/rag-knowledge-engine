@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field
 from typing import List,Optional
 
 class Settings(BaseSettings):
@@ -69,6 +70,27 @@ class Settings(BaseSettings):
     AGENT_MAX_OUTPUT_TOKENS: int = 500
     # Number of most-recent prior messages fed back to the model as conversation context
     AGENT_MAX_HISTORY_MESSAGES: int = 10
+
+    # =========================
+    # Observability (LangSmith)
+    # Accept both the modern LANGSMITH_* and the legacy LANGCHAIN_* env names.
+    # =========================
+    LANGSMITH_TRACING: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"),
+    )
+    LANGSMITH_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"),
+    )
+    LANGSMITH_PROJECT: str = Field(
+        default="rag-knowledge-engine",
+        validation_alias=AliasChoices("LANGSMITH_PROJECT", "LANGCHAIN_PROJECT"),
+    )
+    LANGSMITH_ENDPOINT: str = Field(
+        default="https://api.smith.langchain.com",
+        validation_alias=AliasChoices("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT"),
+    )
 
     # =========================
     # Auth

@@ -8,6 +8,7 @@ from routes import agent, auth_router, base, data, nlp, translation_router, voic
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
+from helpers.observability import configure_langsmith
 from stores.llm.providers.LLMProviderFactory import LLMProviderFactory
 from stores.llm.voice import VoiceProviderFactory
 
@@ -45,6 +46,7 @@ async def warm_up_stt(app: FastAPI, settings) -> None:
 @app.on_event("startup")
 async def startup_event():
     settings = get_settings()
+    configure_langsmith(settings)
     print("PGHOST =", os.getenv("PGHOST"))
     print("DATABASE_URL =", os.getenv("DATABASE_URL"))
     # Railway توفر DATABASE_URL تلقائياً, أو استخدم المتغيرات اليدوية

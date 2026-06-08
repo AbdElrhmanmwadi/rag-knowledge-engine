@@ -5,6 +5,7 @@ from typing import List
 from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
 from stores.LLMEnum import DocumentTypeEnum
+from helpers.observability import traceable
 
 from .BaseController import BaseController
 import json
@@ -49,6 +50,7 @@ class NLPController(BaseController):
             _= await self.vectordb_client.insert_many(collection_name=collection_name,
                                             texts=texts,vectors=vectors,metadata=metadata,record_ids=record_ids)
             return True
+    @traceable(run_type="retriever", name="search_in_vectordb")
     async def search_in_vectordb(self,project:Project,text:str,limit:int):
             collection_name = self.create_collection_name(project_id= project.project_id)
             vectors=self.embedding_client.embed_text(text=text,document_type=DocumentTypeEnum.QUERY.value)
@@ -90,6 +92,7 @@ class NLPController(BaseController):
             )
         return messages
 
+    @traceable(run_type="chain", name="answer_rag_question")
     async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None):
         answer = None
         full_prompt = None

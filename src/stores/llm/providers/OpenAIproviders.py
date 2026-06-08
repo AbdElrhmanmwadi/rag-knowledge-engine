@@ -3,6 +3,7 @@ import logging
 
 from stores.LLMEnum import OpenAIEnums
 from stores.LLMinterface import LLMInterface
+from helpers.observability import traceable
 from typing import List,Union
 class OpenAIprovider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -34,6 +35,7 @@ class OpenAIprovider(LLMInterface):
         return text[:self.default_input_max_characters].strip()
 
 
+    @traceable(run_type="llm", name="openai.generate_text")
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
