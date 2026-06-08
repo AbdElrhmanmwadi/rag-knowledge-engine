@@ -49,10 +49,10 @@ class CoHereProvider(LLMInterface):
         response= self.client.chat(
                 model=self.genaration_model_id,
                 chat_history=chat_history,
-                message=self.process_text(prompt),
+                message=prompt,
                 temperature=temperature,
                 max_tokens=max_output_tokens
-                
+
             )
         if not response or not response.text:
                 self.logger.error("Error while genaration text with Cohere")
