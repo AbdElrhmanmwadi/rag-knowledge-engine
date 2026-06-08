@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from typing import Any, TypedDict
 
 try:
@@ -10,11 +12,78 @@ from models.db_schemes.minirag.scheme import Project
 from services.agent_tools import AgentTools
 
 
+# --- Intent classification (rule-based, multilingual: Arabic + English) ---
+
+# Strip Arabic diacritics and tatweel so "مَرْحَبًا" and "مرحبا" match.
+_AR_DIACRITICS = re.compile(r"[ؐ-ًؚ-ٰٟۖ-ۭـ]")
+_NON_WORD = re.compile(r"[^\w\s]", re.UNICODE)
+
+
+def _normalize(text: str) -> str:
+    """Lowercase, NFKC-fold, strip Arabic diacritics/punctuation and unify letters."""
+    text = unicodedata.normalize("NFKC", text or "").strip().lower()
+    text = _AR_DIACRITICS.sub("", text)
+    text = text.translate(str.maketrans("أإآى", "اااي")).replace("ة", "ه")
+    text = _NON_WORD.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# Each set holds normalized smalltalk phrases. Order of lookup: greeting → thanks → farewell.
+_GREETINGS = {
+    "hi", "hello", "hey", "heya", "hiya", "yo", "howdy", "greetings", "good day",
+    "good morning", "good afternoon", "good evening", "hi there", "hello there",
+    "مرحبا", "مرحبتين", "اهلا", "اهلين", "اهلا وسهلا", "هلا", "هاي", "سلام",
+    "السلام عليكم", "صباح الخير", "مساء الخير", "صباح النور", "مساء النور",
+}
+_THANKS = {
+    "thanks", "thank you", "thanks a lot", "thank you so much", "thx", "ty",
+    "appreciate it", "much appreciated", "cheers",
+    "شكرا", "شكرا لك", "شكرا جزيلا", "مشكور", "تسلم", "ممنون", "يعطيك العافيه",
+}
+_FAREWELLS = {
+    "bye", "goodbye", "good bye", "see you", "see you later", "cya", "good night",
+    "take care",
+    "باي", "وداعا", "مع السلامه", "الى اللقاء", "تصبح علي خير",
+}
+_SMALLTALK = {"greeting": _GREETINGS, "thanks": _THANKS, "farewell": _FAREWELLS}
+# Vocabulary of individual smalltalk words for the short-message token check.
+_SMALLTALK_VOCAB = {word for phrases in _SMALLTALK.values() for p in phrases for word in p.split()}
+
+
+def classify_smalltalk(message: str) -> str | None:
+    """Return 'greeting' | 'thanks' | 'farewell' for pure smalltalk, else None.
+
+    Matches whole normalized phrases first, then falls back to a short-message check
+    where every token is smalltalk vocabulary (catches "hi hi", "مرحبا اهلا").
+    """
+    normalized = _normalize(message)
+    if not normalized:
+        return "greeting"
+    for kind, phrases in _SMALLTALK.items():
+        if normalized in phrases:
+            return kind
+    tokens = normalized.split()
+    if 1 <= len(tokens) <= 4 and all(token in _SMALLTALK_VOCAB for token in tokens):
+        for kind, phrases in _SMALLTALK.items():
+            if any(tokens[0] in p.split() for p in phrases):
+                return kind
+    return None
+
+
+_SMALLTALK_REPLIES = {
+    "greeting": "Hello! Ask me a question about this project and I will use its indexed knowledge to help.",
+    "thanks": "You're welcome! Feel free to ask me anything else about this project.",
+    "farewell": "Goodbye! Come back anytime you have questions about this project.",
+}
+
+
 class AgentState(TypedDict, total=False):
     project: Project
     message: str
     limit: int
+    history: list[dict[str, str]]
     needs_rag: bool
+    smalltalk_kind: str | None
     answer: str
     sources: list[dict[str, Any]]
     tool_trace: list[dict[str, str]]
@@ -26,11 +95,18 @@ class AgentService:
         self.default_limit = default_limit
         self.graph = self._build_graph()
 
-    async def run(self, project: Project, message: str, limit: int | None = None) -> dict[str, Any]:
+    async def run(
+        self,
+        project: Project,
+        message: str,
+        limit: int | None = None,
+        history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         state: AgentState = {
             "project": project,
             "message": message.strip(),
             "limit": limit or self.default_limit,
+            "history": history or [],
             "tool_trace": [],
             "sources": [],
         }
@@ -65,21 +141,14 @@ class AgentService:
         return graph.compile()
 
     async def _classify_intent(self, state: AgentState) -> AgentState:
-        message = state["message"].strip().lower()
-        conversational = {
-            "hi",
-            "hello",
-            "hey",
-            "good morning",
-            "good afternoon",
-            "good evening",
-        }
-        state["needs_rag"] = message not in conversational
+        kind = classify_smalltalk(state["message"])
+        state["smalltalk_kind"] = kind
+        state["needs_rag"] = kind is None
         state.setdefault("tool_trace", []).append(
             {
                 "name": "classify_intent",
                 "status": "success",
-                "summary": "RAG required" if state["needs_rag"] else "Answered without retrieval",
+                "summary": "RAG required" if state["needs_rag"] else f"Smalltalk: {kind}",
             }
         )
         return state
@@ -97,7 +166,9 @@ class AgentService:
 
     async def _answer(self, state: AgentState) -> AgentState:
         if not state.get("needs_rag"):
-            state["answer"] = "Hello. Ask me a question about this project and I will use its indexed knowledge to help."
+            state["answer"] = _SMALLTALK_REPLIES.get(
+                state.get("smalltalk_kind"), _SMALLTALK_REPLIES["greeting"]
+            )
             return state
 
         if not state.get("retrieved_documents"):
@@ -108,6 +179,7 @@ class AgentService:
             project=state["project"],
             query=state["message"],
             limit=state["limit"],
+            history=state.get("history"),
         )
         state.setdefault("tool_trace", []).append(self._trace(result))
         state["answer"] = result.data or "I could not generate an answer from the retrieved project context."
