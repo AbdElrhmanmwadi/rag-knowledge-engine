@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     AGENT_DEFAULT_RETRIEVAL_LIMIT: int = 5
     AGENT_MAX_TOOL_STEPS: int = 4
     AGENT_MAX_OUTPUT_TOKENS: int = 500
+    # Number of most-recent prior messages fed back to the model as conversation context
+    AGENT_MAX_HISTORY_MESSAGES: int = 10
 
     # =========================
     # Auth
