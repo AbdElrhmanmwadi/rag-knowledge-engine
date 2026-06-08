@@ -3,6 +3,7 @@ import logging
 
 from stores.LLMEnum import OpenAIEnums
 from stores.LLMinterface import LLMInterface
+from helpers.observability import traceable
 from typing import List,Union
 class OpenAIprovider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -34,6 +35,7 @@ class OpenAIprovider(LLMInterface):
         return text[:self.default_input_max_characters].strip()
 
 
+    @traceable(run_type="llm", name="openai.generate_text")
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
@@ -43,7 +45,9 @@ class OpenAIprovider(LLMInterface):
             return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
         temperature=temperature if temperature  else self.default_generation_temperature
-        chat_history.append(self.constract_prompt(prompt=prompt,role=OpenAIEnums.USER.value))
+        # Do NOT truncate the generation prompt with process_text (that limit is for
+        # embedding inputs); truncating here would cut the question off the RAG prompt.
+        chat_history.append({"role": OpenAIEnums.USER.value, "content": prompt})
         response=self.client.chat.completions.create(
             model=self.genaration_model_id,
             messages=chat_history,

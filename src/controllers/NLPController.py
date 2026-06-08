@@ -5,6 +5,7 @@ from typing import List
 from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
 from stores.LLMEnum import DocumentTypeEnum
+from helpers.observability import traceable
 
 from .BaseController import BaseController
 import json
@@ -49,6 +50,46 @@ class NLPController(BaseController):
             _= await self.vectordb_client.insert_many(collection_name=collection_name,
                                             texts=texts,vectors=vectors,metadata=metadata,record_ids=record_ids)
             return True
+    @traceable(run_type="chain", name="condense_query")
+    async def condense_query(self, query: str, history: list = None) -> str:
+        """Rewrite a follow-up question into a standalone one using chat history.
+
+        Lets retrieval resolve pronouns/ellipsis ("and its size?") that the raw
+        message lacks. Falls back to the original query if there is no history or
+        the model call fails, so retrieval is never worse than before.
+        """
+        if not history:
+            return query
+        lines = []
+        for turn in history[-6:]:
+            content = (turn.get("content") or "").strip()
+            if not content:
+                continue
+            speaker = "User" if (turn.get("role") or "").lower() == "user" else "Assistant"
+            lines.append(f"{speaker}: {content}")
+        if not lines:
+            return query
+        transcript = "\n".join(lines)
+        instruction = (
+            "Given the conversation history and a follow-up question, rewrite the "
+            "follow-up as a standalone question understandable on its own. Keep the "
+            "original language. Reply with ONLY the rewritten question.\n\n"
+            f"Conversation:\n{transcript}\n\nFollow-up: {query}\n\nStandalone question:"
+        )
+        try:
+            result = self.generation_client.genarate_text(
+                prompt=instruction, max_output_tokens=128, chat_history=[]
+            )
+        except Exception as e:
+            logger.warning(f"condense_query failed, using original query: {e}")
+            return query
+        text = getattr(result, "content", None)
+        if text is None:
+            text = result if isinstance(result, str) else getattr(result, "text", None)
+        text = (str(text).strip() if text is not None else "")
+        return text or query
+
+    @traceable(run_type="retriever", name="search_in_vectordb")
     async def search_in_vectordb(self,project:Project,text:str,limit:int):
             collection_name = self.create_collection_name(project_id= project.project_id)
             vectors=self.embedding_client.embed_text(text=text,document_type=DocumentTypeEnum.QUERY.value)
@@ -66,7 +107,32 @@ class NLPController(BaseController):
             if search_results is None:
                 return False
             return search_results
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30):
+    def _build_history_messages(self, history):
+        """Convert a neutral [{'role','content'}] history into provider-formatted messages.
+
+        Roles other than user/assistant (and empty content) are skipped. The final
+        user query is appended later by the generation client, so it is not added here.
+        """
+        if not history:
+            return []
+        enums = self.generation_client.enums
+        role_map = {
+            "user": enums.USER.value,
+            "assistant": enums.ASSISTANT.value,
+        }
+        messages = []
+        for turn in history:
+            role = role_map.get((turn.get("role") or "").lower())
+            content = (turn.get("content") or "").strip()
+            if not role or not content:
+                continue
+            messages.append(
+                self.generation_client.constract_prompt(prompt=content, role=role)
+            )
+        return messages
+
+    @traceable(run_type="chain", name="answer_rag_question")
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None):
         answer = None
         full_prompt = None
         chat_history = None
@@ -100,6 +166,7 @@ class NLPController(BaseController):
             return answer,full_prompt,chat_history
         chat_history=[
         self.generation_client.constract_prompt(prompt=system_promit,role=self.generation_client.enums.SYSTEM.value),]
+        chat_history.extend(self._build_history_messages(history))
         full_prompt="\n\n".join([document_prompt, footer_prompt])
         logger.info(f"Generated full prompt with {len(document_prompts)} documents")
         try:

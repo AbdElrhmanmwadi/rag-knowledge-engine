@@ -17,6 +17,7 @@ class AgentController:
         generation_client,
         template_parser,
         default_limit: int = 5,
+        max_history_messages: int = 10,
     ):
         nlp_controller = NLPController(
             embedding_client=embedding_client,
@@ -27,6 +28,7 @@ class AgentController:
         tools = AgentTools(db_client=db_client, nlp_controller=nlp_controller)
         self.db_client = db_client
         self.default_limit = default_limit
+        self.max_history_messages = max_history_messages
         self.agent_service = AgentService(tools=tools, default_limit=default_limit)
 
     async def chat(
@@ -38,6 +40,7 @@ class AgentController:
         limit: int | None = None,
     ) -> dict:
         session_model = await AgentSessionModel.create_instance(db_client=self.db_client)
+        history: list[dict] = []
         if session_id is None:
             agent_session = await session_model.create_session(
                 project_id=project.project_id,
@@ -55,6 +58,14 @@ class AgentController:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Agent session not found",
                 )
+            # Captured before persisting the current message, so it is not duplicated.
+            history = [
+                {"role": m.role, "content": m.content}
+                for m in agent_session.messages
+            ]
+
+        if self.max_history_messages > 0:
+            history = history[-self.max_history_messages:]
 
         await session_model.add_message(
             session_id=agent_session.session_id,
@@ -65,6 +76,7 @@ class AgentController:
             project=project,
             message=message,
             limit=limit or self.default_limit,
+            history=history,
         )
         await session_model.add_message(
             session_id=agent_session.session_id,

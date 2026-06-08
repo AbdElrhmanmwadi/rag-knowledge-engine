@@ -43,6 +43,19 @@ class AgentTools:
             data=files,
         )
 
+    async def rewrite_query(self, query: str, history: list | None = None) -> AgentToolResult:
+        standalone = await self.nlp_controller.condense_query(query=query, history=history)
+        standalone = (standalone or query).strip()
+        changed = standalone != query.strip()
+        return AgentToolResult(
+            name="rewrite_query",
+            status="success",
+            summary=(
+                f"Rewrote follow-up to: {standalone}" if changed else "Query already standalone"
+            ),
+            data=standalone,
+        )
+
     async def rag_search(self, project: Project, query: str, limit: int) -> AgentToolResult:
         documents = await self.nlp_controller.search_in_vectordb(
             project=project,
@@ -58,11 +71,14 @@ class AgentTools:
             data=documents,
         )
 
-    async def rag_answer(self, project: Project, query: str, limit: int) -> AgentToolResult:
+    async def rag_answer(
+        self, project: Project, query: str, limit: int, history: list | None = None
+    ) -> AgentToolResult:
         answer, _full_prompt, _chat_history = await self.nlp_controller.answer_rag_question(
             query=query,
             project=project,
             limit=limit,
+            history=history,
         )
         if not answer:
             return AgentToolResult(

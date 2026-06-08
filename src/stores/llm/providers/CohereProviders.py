@@ -7,6 +7,7 @@ import logging
 
 from stores.LLMEnum import CohereEnums
 from stores.LLMinterface import LLMInterface
+from helpers.observability import traceable
 from typing import List,Union
 class CoHereProvider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -35,6 +36,7 @@ class CoHereProvider(LLMInterface):
     def process_text(self,text:str):
         return text[:self.default_input_max_characters].strip()
         
+    @traceable(run_type="llm", name="cohere.generate_text")
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
         if not self.client:
                self.logger.error("Cohere CLIENT was not set ")
@@ -47,10 +49,10 @@ class CoHereProvider(LLMInterface):
         response= self.client.chat(
                 model=self.genaration_model_id,
                 chat_history=chat_history,
-                message=self.process_text(prompt),
+                message=prompt,
                 temperature=temperature,
                 max_tokens=max_output_tokens
-                
+
             )
         if not response or not response.text:
                 self.logger.error("Error while genaration text with Cohere")
