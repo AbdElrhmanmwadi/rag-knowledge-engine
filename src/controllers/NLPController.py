@@ -66,7 +66,31 @@ class NLPController(BaseController):
             if search_results is None:
                 return False
             return search_results
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30):
+    def _build_history_messages(self, history):
+        """Convert a neutral [{'role','content'}] history into provider-formatted messages.
+
+        Roles other than user/assistant (and empty content) are skipped. The final
+        user query is appended later by the generation client, so it is not added here.
+        """
+        if not history:
+            return []
+        enums = self.generation_client.enums
+        role_map = {
+            "user": enums.USER.value,
+            "assistant": enums.ASSISTANT.value,
+        }
+        messages = []
+        for turn in history:
+            role = role_map.get((turn.get("role") or "").lower())
+            content = (turn.get("content") or "").strip()
+            if not role or not content:
+                continue
+            messages.append(
+                self.generation_client.constract_prompt(prompt=content, role=role)
+            )
+        return messages
+
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None):
         answer = None
         full_prompt = None
         chat_history = None
@@ -100,6 +124,7 @@ class NLPController(BaseController):
             return answer,full_prompt,chat_history
         chat_history=[
         self.generation_client.constract_prompt(prompt=system_promit,role=self.generation_client.enums.SYSTEM.value),]
+        chat_history.extend(self._build_history_messages(history))
         full_prompt="\n\n".join([document_prompt, footer_prompt])
         logger.info(f"Generated full prompt with {len(document_prompts)} documents")
         try:
