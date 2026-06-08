@@ -58,11 +58,14 @@ class AgentTools:
             data=documents,
         )
 
-    async def rag_answer(self, project: Project, query: str, limit: int) -> AgentToolResult:
+    async def rag_answer(
+        self, project: Project, query: str, limit: int, history: list | None = None
+    ) -> AgentToolResult:
         answer, _full_prompt, _chat_history = await self.nlp_controller.answer_rag_question(
             query=query,
             project=project,
             limit=limit,
+            history=history,
         )
         if not answer:
             return AgentToolResult(
