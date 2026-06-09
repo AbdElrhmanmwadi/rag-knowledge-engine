@@ -47,8 +47,7 @@ async def warm_up_stt(app: FastAPI, settings) -> None:
 async def startup_event():
     settings = get_settings()
     configure_langsmith(settings)
-    print("PGHOST =", os.getenv("PGHOST"))
-    print("DATABASE_URL =", os.getenv("DATABASE_URL"))
+    # NOTE: never print DATABASE_URL — it embeds the DB password and would leak into logs.
     # Railway توفر DATABASE_URL تلقائياً, أو استخدم المتغيرات اليدوية
     database_url = os.getenv('DATABASE_URL')
     if database_url:
