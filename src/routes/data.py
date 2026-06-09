@@ -1,6 +1,6 @@
 import shutil
 
-from fastapi import APIRouter, Depends, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from helpers.config import Settings, get_settings
 from helpers.auth_dependencies import get_current_user
@@ -200,9 +200,23 @@ async def list_files(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await get_project_for_user(
-        db, project_id=project_id, user_id=current_user.id, create_if_missing=False
-    )
+    try:
+        project = await get_project_for_user(
+            db, project_id=project_id, user_id=current_user.id, create_if_missing=False
+        )
+    except HTTPException as exc:
+        # A brand-new project has no row yet, so get_project_for_user raises 404. For a
+        # read that is not an error — return an empty list so the client doesn't treat a
+        # new/empty project as a failure and spam-retry. Ownership failures (403) on
+        # existing projects still propagate.
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            return JSONResponse(
+                content={
+                    "signal": ResponseStatus.FILE_LIST_SUCCESS.value,
+                    "files": [],
+                }
+            )
+        raise
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
 
     project_files = await asset_model.get_all_project_asset(
