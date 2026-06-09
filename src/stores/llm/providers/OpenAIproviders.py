@@ -20,7 +20,7 @@ class OpenAIprovider(LLMInterface):
         self.embedding_size=None
         self.enums=OpenAIEnums
         self.client=OpenAI(api_key=self.api_key,
-                           api_url=self.api_url)
+                           base_url=self.api_url)
         self.logger = logging.getLogger(__name__)
         
 
@@ -36,7 +36,7 @@ class OpenAIprovider(LLMInterface):
 
 
     @traceable(run_type="llm", name="openai.generate_text")
-    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
+    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=None,temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
             return None
@@ -47,6 +47,8 @@ class OpenAIprovider(LLMInterface):
         temperature=temperature if temperature  else self.default_generation_temperature
         # Do NOT truncate the generation prompt with process_text (that limit is for
         # embedding inputs); truncating here would cut the question off the RAG prompt.
+        # Copy so we never mutate the caller's list (and avoid a shared mutable default).
+        chat_history = list(chat_history) if chat_history else []
         chat_history.append({"role": OpenAIEnums.USER.value, "content": prompt})
         response=self.client.chat.completions.create(
             model=self.genaration_model_id,
@@ -57,7 +59,9 @@ class OpenAIprovider(LLMInterface):
         if not response or not response.choices or len(response.choices) == 0 or not response.choices[0].message:
             self.logger.error("Error while generating text with openai")
             return None
-        return response.choices[0].message
+        # Return the text, not the message object (the object is not JSON-serializable
+        # and downstream callers serialize this value directly into the API response).
+        return response.choices[0].message.content
 
 
         

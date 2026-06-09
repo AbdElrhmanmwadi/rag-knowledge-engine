@@ -37,7 +37,7 @@ class CoHereProvider(LLMInterface):
         return text[:self.default_input_max_characters].strip()
         
     @traceable(run_type="llm", name="cohere.generate_text")
-    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=[],temperature:float=None):
+    def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=None,temperature:float=None):
         if not self.client:
                self.logger.error("Cohere CLIENT was not set ")
                return None
@@ -46,6 +46,7 @@ class CoHereProvider(LLMInterface):
                 return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
         temperature=temperature if temperature  else self.default_generation_temperature
+        chat_history = list(chat_history) if chat_history else []
         response= self.client.chat(
                 model=self.genaration_model_id,
                 chat_history=chat_history,

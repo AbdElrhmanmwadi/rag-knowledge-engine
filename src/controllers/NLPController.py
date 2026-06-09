@@ -132,11 +132,13 @@ class NLPController(BaseController):
         return messages
 
     @traceable(run_type="chain", name="answer_rag_question")
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None):
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
         answer = None
         full_prompt = None
         chat_history = None
-        retreved_documant= await self.search_in_vectordb(project=project,text=query,limit=limit)
+        # Reuse documents the caller already retrieved (the agent's retrieve node searched
+        # with the same query/limit); only hit the vector DB when none were supplied.
+        retreved_documant = documents if documents else await self.search_in_vectordb(project=project,text=query,limit=limit)
         if not retreved_documant or len(retreved_documant)==0:
             logger.warning(f"No documents retrieved for query: {query}")
             return answer,full_prompt,chat_history

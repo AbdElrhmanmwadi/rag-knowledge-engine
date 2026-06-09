@@ -6,10 +6,15 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     PyMuPDFLoader,
     TextLoader,
+    
 )
 SUPPORTED_FILE_TYPES = {
     ".txt": {
         "mime_types": {"text/plain"},
+        "loader": lambda path: TextLoader(file_path=path, encoding="utf-8"),
+    },
+    ".md": {
+        "mime_types": {"text/markdown", "text/plain", "text/x-markdown"},
         "loader": lambda path: TextLoader(file_path=path, encoding="utf-8"),
     },
     ".pdf": {
@@ -30,12 +35,20 @@ SUPPORTED_FILE_TYPES = {
         "mime_types": {"text/html"},
         "loader": lambda path: BSHTMLLoader(file_path=path, open_encoding="utf-8"),
     },
-    
+
 }
+
+# Extensions whose content is structured with markdown headers (e.g. Q&A knowledge
+# bases). These are split per-section by header instead of by fixed character count.
+MARKDOWN_FILE_TYPES = {".md"}
 
 
 def normalize_file_extension(file_name: str) -> str:
     return os.path.splitext(file_name)[-1].lower()
+
+
+def is_markdown_file(file_name: str) -> bool:
+    return normalize_file_extension(file_name) in MARKDOWN_FILE_TYPES
 
 
 def is_supported_file(file_name: str) -> bool:

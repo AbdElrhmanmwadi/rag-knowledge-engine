@@ -102,6 +102,9 @@ class AgentState(TypedDict, total=False):
     smalltalk_kind: str | None
     lang: str
     search_query: str
+    # Declared as a graph channel so it survives between nodes under LangGraph;
+    # an undeclared key returned by _retrieve would be dropped before _answer reads it.
+    retrieved_documents: list[Any]
     answer: str
     sources: list[dict[str, Any]]
     tool_trace: list[dict[str, str]]
@@ -204,6 +207,8 @@ class AgentService:
             query=state.get("search_query") or state["message"],
             limit=state["limit"],
             history=state.get("history"),
+            # Reuse the chunks already fetched by _retrieve instead of searching again.
+            documents=state.get("retrieved_documents"),
         )
         state.setdefault("tool_trace", []).append(self._trace(result))
         state["answer"] = result.data or "I could not generate an answer from the retrieved project context."
