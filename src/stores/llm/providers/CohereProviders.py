@@ -45,7 +45,9 @@ class CoHereProvider(LLMInterface):
                 self.logger.error("generation model for Cohere was not set ")
                 return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
-        temperature=temperature if temperature  else self.default_generation_temperature
+        # `is not None` (not a truthy check): temperature=0 is a valid, deterministic
+        # setting — a plain `if temperature` would wrongly fall back to the default.
+        temperature=temperature if temperature is not None else self.default_generation_temperature
         chat_history = list(chat_history) if chat_history else []
         response= self.client.chat(
                 model=self.genaration_model_id,

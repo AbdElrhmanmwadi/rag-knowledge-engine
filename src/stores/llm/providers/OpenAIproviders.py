@@ -44,7 +44,9 @@ class OpenAIprovider(LLMInterface):
             self.logger.error("generation model for OpenAI was not set ")
             return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
-        temperature=temperature if temperature  else self.default_generation_temperature
+        # `is not None` (not a truthy check): temperature=0 is a valid, deterministic
+        # setting — a plain `if temperature` would wrongly fall back to the default.
+        temperature=temperature if temperature is not None else self.default_generation_temperature
         # Do NOT truncate the generation prompt with process_text (that limit is for
         # embedding inputs); truncating here would cut the question off the RAG prompt.
         # Copy so we never mutate the caller's list (and avoid a shared mutable default).

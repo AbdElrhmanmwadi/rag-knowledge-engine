@@ -175,7 +175,11 @@ class NLPController(BaseController):
             answer = self.generation_client.genarate_text(
                 prompt=full_prompt,
                 chat_history=chat_history,
-                max_output_tokens=None
+                max_output_tokens=None,
+                # Deterministic (greedy) decoding for RAG answers: sampling
+                # randomness is what occasionally made the model dump its raw
+                # document context verbatim instead of synthesizing an answer.
+                temperature=0,
             )
         except Exception as e:
             logger.error(f"Error generating text: {str(e)}")
