@@ -23,7 +23,7 @@ class PGVectorDBProvider(VectorDBInterface):
         if distance_method== DistanceMethodEnums.COSINE.value:
             distance_method= PgVectorDistanceMethodEnums.COSINE.value
         elif distance_method== DistanceMethodEnums.DOT.value:
-            distance_method= PgVectorDistanceMethodEnums.COSINE.value
+            distance_method= PgVectorDistanceMethodEnums.DOT.value
 
         self.distance_method=distance_method
 
