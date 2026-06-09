@@ -17,7 +17,7 @@ class QdrantDBProvider(VectorDBInterface):
         if distance_method==DistanceMethodEnums.COSINE.value:
             self.distance_method=models.Distance.COSINE
         elif distance_method==DistanceMethodEnums.DOT.value:
-            self.distance_method=DistanceMethodEnums.DOT.value
+            self.distance_method=models.Distance.DOT
         self.logger=logging.getLogger("uvicorn")
 
     async def connect(self):
@@ -43,10 +43,10 @@ class QdrantDBProvider(VectorDBInterface):
                                 do_reset: bool = False):
         
         if do_reset :
-           _ = self.delete_collection(collection_name=collection_name)
-        if not self.is_collection_existed(collection_name=collection_name):   
+           _ = await self.delete_collection(collection_name=collection_name)
+        if not await self.is_collection_existed(collection_name=collection_name):
             self.logger.info(f"creating new qudrant collection {collection_name} with embedding size {embedding_size} and distance method {self.distance_method}")
-            _=await self.client.create_collection(
+            _=self.client.create_collection(
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(
                     size=embedding_size,
