@@ -47,3 +47,8 @@ class UserResponse(BaseModel):
     is_verified: bool
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=20)
+    new_password: str = Field(min_length=8, max_length=128)

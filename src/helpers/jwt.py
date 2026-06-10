@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -50,6 +51,27 @@ def create_email_verification_token(*, user_id: int, email: str, settings: Setti
         expires_delta=timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS),
         token_type="email_verification",
         extra_claims={"email": email},
+    )
+
+
+def password_hash_fingerprint(hashed_password: str | None) -> str:
+    """Short digest of the current password hash, embedded in reset tokens.
+
+    The fingerprint changes as soon as the password does, so an issued reset
+    token can only be redeemed once — without storing any state server-side.
+    """
+    return sha256((hashed_password or "").encode()).hexdigest()[:16]
+
+
+def create_password_reset_token(
+    *, user_id: int, email: str, hashed_password: str | None, settings: Settings
+) -> str:
+    return create_token(
+        subject=str(user_id),
+        settings=settings,
+        expires_delta=timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+        token_type="password_reset",
+        extra_claims={"email": email, "pwd": password_hash_fingerprint(hashed_password)},
     )
 
 
