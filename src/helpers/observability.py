@@ -31,6 +31,32 @@ except Exception:  # pragma: no cover - exercised when langsmith is not installe
 traceable = _traceable
 
 
+def add_llm_run_metadata(model: str = None, provider: str = None) -> None:
+    """Tag the current LangSmith run with `ls_model_name`/`ls_provider`.
+
+    LangSmith uses these to price token usage. The model id is only known at
+    call time (set_genaration_model), so it cannot live in the decorator's
+    static metadata. Silently does nothing without langsmith or an active run.
+    """
+    if not _LANGSMITH_AVAILABLE:
+        return
+    try:
+        from langsmith.run_helpers import get_current_run_tree
+
+        run_tree = get_current_run_tree()
+        if run_tree is None:
+            return
+        metadata = {}
+        if provider:
+            metadata["ls_provider"] = provider
+        if model:
+            metadata["ls_model_name"] = model
+        if metadata:
+            run_tree.add_metadata(metadata)
+    except Exception:
+        logger.debug("Could not attach LLM metadata to the current run", exc_info=True)
+
+
 def configure_langsmith(settings) -> bool:
     """Export LangSmith env vars when tracing is enabled.
 

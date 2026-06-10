@@ -8,6 +8,7 @@ except Exception:  # pragma: no cover - exercised when langgraph is not installe
     END = None
     StateGraph = None
 
+from helpers.observability import traceable
 from models.db_schemes.minirag.scheme import Project
 from services.agent_tools import AgentTools
 
@@ -116,6 +117,10 @@ class AgentService:
         self.default_limit = default_limit
         self.graph = self._build_graph()
 
+    # Root span for the whole request: the traced steps below (condense_query,
+    # search_in_vectordb, answer_rag_question, cohere/openai generate) nest under
+    # it via contextvars instead of each becoming its own top-level trace.
+    @traceable(run_type="chain", name="agent_run")
     async def run(
         self,
         project: Project,

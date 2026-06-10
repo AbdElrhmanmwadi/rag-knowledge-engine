@@ -3,7 +3,7 @@ import logging
 
 from stores.LLMEnum import OpenAIEnums
 from stores.LLMinterface import LLMInterface
-from helpers.observability import traceable
+from helpers.observability import traceable, add_llm_run_metadata
 from typing import List,Union
 class OpenAIprovider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -35,7 +35,6 @@ class OpenAIprovider(LLMInterface):
         return text[:self.default_input_max_characters].strip()
 
 
-    @traceable(run_type="llm", name="openai.generate_text")
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=None,temperature:float=None):
         if not self.client:
             self.logger.error("OpenAI CLIENT was not set ")
@@ -52,6 +51,21 @@ class OpenAIprovider(LLMInterface):
         # Copy so we never mutate the caller's list (and avoid a shared mutable default).
         chat_history = list(chat_history) if chat_history else []
         chat_history.append({"role": OpenAIEnums.USER.value, "content": prompt})
+        result = self._chat(
+            chat_history=chat_history,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+        # Return the text, not the message object (the object is not JSON-serializable
+        # and downstream callers serialize this value directly into the API response).
+        return result["text"] if result else None
+
+    # LangSmith only counts tokens when the traced llm run's outputs carry a
+    # `usage_metadata` key, so the traced call returns a dict and genarate_text
+    # unwraps the text for callers.
+    @traceable(run_type="llm", name="openai.generate_text", metadata={"ls_provider": "openai"})
+    def _chat(self, chat_history:list, temperature:float, max_output_tokens:int):
+        add_llm_run_metadata(model=self.genaration_model_id, provider="openai")
         response=self.client.chat.completions.create(
             model=self.genaration_model_id,
             messages=chat_history,
@@ -61,9 +75,15 @@ class OpenAIprovider(LLMInterface):
         if not response or not response.choices or len(response.choices) == 0 or not response.choices[0].message:
             self.logger.error("Error while generating text with openai")
             return None
-        # Return the text, not the message object (the object is not JSON-serializable
-        # and downstream callers serialize this value directly into the API response).
-        return response.choices[0].message.content
+        output = {"text": response.choices[0].message.content}
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            output["usage_metadata"] = {
+                "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+            }
+        return output
 
 
         
