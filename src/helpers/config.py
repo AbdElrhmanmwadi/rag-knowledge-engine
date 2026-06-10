@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "Voxora <noreply@your-domain.com>"
     FRONTEND_BASE_URL: str = "https://your-domain.com"

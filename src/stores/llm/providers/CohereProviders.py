@@ -7,7 +7,7 @@ import logging
 
 from stores.LLMEnum import CohereEnums
 from stores.LLMinterface import LLMInterface
-from helpers.observability import traceable
+from helpers.observability import traceable, add_llm_run_metadata
 from typing import List,Union
 class CoHereProvider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -36,7 +36,6 @@ class CoHereProvider(LLMInterface):
     def process_text(self,text:str):
         return text[:self.default_input_max_characters].strip()
         
-    @traceable(run_type="llm", name="cohere.generate_text")
     def genarate_text(self, prompt:str,max_output_tokens:int=None,chat_history:list=None,temperature:float=None):
         if not self.client:
                self.logger.error("Cohere CLIENT was not set ")
@@ -45,8 +44,24 @@ class CoHereProvider(LLMInterface):
                 self.logger.error("generation model for Cohere was not set ")
                 return None
         max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
-        temperature=temperature if temperature  else self.default_generation_temperature
+        # `is not None` (not a truthy check): temperature=0 is a valid, deterministic
+        # setting — a plain `if temperature` would wrongly fall back to the default.
+        temperature=temperature if temperature is not None else self.default_generation_temperature
         chat_history = list(chat_history) if chat_history else []
+        result = self._chat(
+            prompt=prompt,
+            chat_history=chat_history,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+        return result["text"] if result else None
+
+    # LangSmith only counts tokens when the traced llm run's outputs carry a
+    # `usage_metadata` key, so the traced call returns a dict and genarate_text
+    # unwraps the text for callers.
+    @traceable(run_type="llm", name="cohere.generate_text", metadata={"ls_provider": "cohere"})
+    def _chat(self, prompt:str, chat_history:list, temperature:float, max_output_tokens:int):
+        add_llm_run_metadata(model=self.genaration_model_id, provider="cohere")
         response= self.client.chat(
                 model=self.genaration_model_id,
                 chat_history=chat_history,
@@ -58,7 +73,25 @@ class CoHereProvider(LLMInterface):
         if not response or not response.text:
                 self.logger.error("Error while genaration text with Cohere")
                 return None
-        return response.text
+        output = {"text": response.text}
+        usage = self._usage_metadata(response)
+        if usage:
+            output["usage_metadata"] = usage
+        return output
+
+    @staticmethod
+    def _usage_metadata(response):
+        meta = getattr(response, "meta", None)
+        tokens = getattr(meta, "billed_units", None) or getattr(meta, "tokens", None)
+        input_tokens = getattr(tokens, "input_tokens", None)
+        output_tokens = getattr(tokens, "output_tokens", None)
+        if input_tokens is None and output_tokens is None:
+            return None
+        return {
+            "input_tokens": int(input_tokens or 0),
+            "output_tokens": int(output_tokens or 0),
+            "total_tokens": int(input_tokens or 0) + int(output_tokens or 0),
+        }
     
     def embed_text(self, text:Union[str,List[str]],document_type:str=None):
         if not self.client:

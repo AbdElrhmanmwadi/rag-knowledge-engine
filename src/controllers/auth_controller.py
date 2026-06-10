@@ -7,13 +7,24 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from helpers.config import Settings
-from helpers.email import send_verification_email
+from helpers.email import send_password_reset_email, send_verification_email
 from helpers.google_auth import verify_google_id_token
-from helpers.jwt import create_access_token, create_email_verification_token, decode_token
+from helpers.jwt import (
+    create_access_token,
+    create_email_verification_token,
+    create_password_reset_token,
+    decode_token,
+    password_hash_fingerprint,
+)
 from helpers.security import hash_password, verify_password
 from models.token_model import RefreshToken
 from models.user_model import User
-from routes.schemes.auth  import LoginRequest, PasswordResetRequest, RegisterRequest
+from routes.schemes.auth import (
+    LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    RegisterRequest,
+)
 
 
 class AuthController:
@@ -170,14 +181,45 @@ class AuthController:
         db: AsyncSession,
         settings: Settings,
     ) -> dict[str, str]:
-        user = await db.scalar(select(User).where(User.email == payload.email ))
-        if user:
-            reset_token = create_email_verification_token(
+        user = await db.scalar(select(User).where(User.email == payload.email))
+        # Google-only accounts have no password to reset; skip silently so the
+        # response stays identical and reveals nothing about the account.
+        if user and user.hashed_password:
+            reset_token = create_password_reset_token(
                 user_id=user.id,
                 email=user.email,
+                hashed_password=user.hashed_password,
                 settings=settings,
-                token_type="password_reset"
             )
-            await send_verification_email(user.email, reset_token, settings, subject="Password Reset")
+            await send_password_reset_email(user.email, reset_token, settings)
 
         return {"message": "If an account with that email exists, a password reset link has been sent"}
+
+    @staticmethod
+    async def reset_password(
+        payload: PasswordResetConfirmRequest,
+        db: AsyncSession,
+        settings: Settings,
+    ) -> dict[str, str]:
+        token_payload = decode_token(payload.token, settings=settings, expected_type="password_reset")
+        user_id = int(token_payload["sub"])
+
+        user = await db.scalar(select(User).where(User.id == user_id))
+        if (
+            not user
+            or user.email != token_payload.get("email")
+            or password_hash_fingerprint(user.hashed_password) != token_payload.get("pwd")
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or already used reset token",
+            )
+
+        user.hashed_password = hash_password(payload.new_password)
+        # A reset proves control of the email, so the account counts as verified.
+        user.is_verified = True
+        # Force every existing session to log in again with the new password.
+        await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+        await db.commit()
+
+        return {"message": "Password has been reset successfully"}
