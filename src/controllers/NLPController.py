@@ -6,6 +6,7 @@ from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
 from stores.LLMEnum import DocumentTypeEnum
 from helpers.observability import traceable
+from helpers.streaming import aiter_in_thread
 
 from .BaseController import BaseController
 import json
@@ -139,22 +140,23 @@ class NLPController(BaseController):
             )
         return messages
 
-    @traceable(run_type="chain", name="answer_rag_question")
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
-        answer = None
-        full_prompt = None
-        chat_history = None
+    async def _build_rag_prompt(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        """Build (full_prompt, chat_history) for a RAG answer, or None on failure.
+
+        Shared by the blocking and streaming answer paths so both send the model
+        byte-identical prompts.
+        """
         # Reuse documents the caller already retrieved (the agent's retrieve node searched
         # with the same query/limit); only hit the vector DB when none were supplied.
         retreved_documant = documents if documents else await self.search_in_vectordb(project=project,text=query,limit=limit)
         if not retreved_documant or len(retreved_documant)==0:
             logger.warning(f"No documents retrieved for query: {query}")
-            return answer,full_prompt,chat_history
+            return None
         logger.info(f"Retrieved {len(retreved_documant)} documents")
         system_promit=self.template_parser.get("rag","system_prompt")
         if not system_promit:
             logger.error("Failed to get system_prompt from template parser")
-            return answer,full_prompt,chat_history
+            return None
         document_prompts = []
         for idx, doc in enumerate(retreved_documant):
             doc_prompt = self.template_parser.get("rag","documant_prompt",{
@@ -166,19 +168,28 @@ class NLPController(BaseController):
                 document_prompts.append(doc_prompt)
         if not document_prompts:
             logger.error("Failed to generate document prompts")
-            return answer,full_prompt,chat_history
+            return None
         document_prompt="\n".join(document_prompts)
         footer_prompt=self.template_parser.get("rag","footer_prompt",{
             "query":query
         })
         if not footer_prompt:
             logger.error("Failed to get footer_prompt from template parser")
-            return answer,full_prompt,chat_history
+            return None
         chat_history=[
         self.generation_client.constract_prompt(prompt=system_promit,role=self.generation_client.enums.SYSTEM.value),]
         chat_history.extend(self._build_history_messages(history))
         full_prompt="\n\n".join([document_prompt, footer_prompt])
         logger.info(f"Generated full prompt with {len(document_prompts)} documents")
+        return full_prompt,chat_history
+
+    @traceable(run_type="chain", name="answer_rag_question")
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        answer = None
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        if built is None:
+            return None,None,None
+        full_prompt,chat_history = built
         try:
             answer = self.generation_client.genarate_text(
                 prompt=full_prompt,
@@ -193,4 +204,23 @@ class NLPController(BaseController):
             logger.error(f"Error generating text: {str(e)}")
             answer = None
         return answer,full_prompt,chat_history
- 
+
+    @traceable(run_type="chain", name="answer_rag_question_stream")
+    async def answer_rag_question_stream(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        """Yield answer text chunks; yields nothing when no prompt could be built
+        (the caller falls back to its no-context message)."""
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        if built is None:
+            return
+        full_prompt,chat_history = built
+        sync_stream = self.generation_client.genarate_text_stream(
+            prompt=full_prompt,
+            chat_history=chat_history,
+            max_output_tokens=None,
+            # Same deterministic decoding as the blocking path.
+            temperature=0,
+        )
+        # The provider generator blocks on the network; iterate it on a worker
+        # thread so the event loop keeps flushing SSE events.
+        async for chunk in aiter_in_thread(sync_stream):
+            yield chunk

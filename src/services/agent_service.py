@@ -147,6 +147,78 @@ class AgentService:
         state = await self._finalize(state)
         return self._public_result(state)
 
+    # Streaming bypasses the LangGraph graph on purpose: graph nodes exchange whole
+    # states, which is exactly what token streaming is not. The node methods are
+    # reused directly so both paths share classification/retrieval logic, and the
+    # existing run() stays byte-for-byte identical for stream=false and eval_rag.py.
+    @traceable(run_type="chain", name="agent_run_stream")
+    async def run_stream(
+        self,
+        project: Project,
+        message: str,
+        limit: int | None = None,
+        history: list[dict[str, str]] | None = None,
+    ):
+        """Yield event dicts: one "meta" (sources + trace so far), then "delta"
+        events with text chunks, then one "final" with the completed tool trace."""
+        state: AgentState = {
+            "project": project,
+            "message": message.strip(),
+            "limit": limit or self.default_limit,
+            "history": history or [],
+            "tool_trace": [],
+            "sources": [],
+        }
+        state = await self._classify_intent(state)
+        if state["needs_rag"]:
+            state = await self._retrieve(state)
+        # Retrieval is done before generation starts, so the client can render
+        # source citations while tokens are still arriving.
+        yield {
+            "type": "meta",
+            "sources": state.get("sources") or [],
+            "tool_trace": list(state.get("tool_trace") or []),
+        }
+
+        if not state.get("needs_rag") or not state.get("retrieved_documents"):
+            # Smalltalk and the no-context fallback are single-shot answers;
+            # reuse the non-stream node so the wording stays identical.
+            state = await self._answer(state)
+            state = await self._finalize(state)
+            yield {"type": "delta", "text": state["answer"]}
+            yield {"type": "final", "tool_trace": state.get("tool_trace") or []}
+            return
+
+        got_chunks = False
+        async for chunk in self.tools.rag_answer_stream(
+            project=state["project"],
+            query=state.get("search_query") or state["message"],
+            limit=state["limit"],
+            history=state.get("history"),
+            # Reuse the chunks already fetched by _retrieve instead of searching again.
+            documents=state.get("retrieved_documents"),
+        ):
+            if chunk:
+                got_chunks = True
+                yield {"type": "delta", "text": chunk}
+
+        if got_chunks:
+            trace = {
+                "name": "rag_answer",
+                "status": "success",
+                "summary": "Generated answer from project context",
+            }
+        else:
+            trace = {
+                "name": "rag_answer",
+                "status": "empty",
+                "summary": "No answer could be generated from project context",
+            }
+            # Same fallback sentence as the non-stream path.
+            yield {"type": "delta", "text": "I could not generate an answer from the retrieved project context."}
+        state.setdefault("tool_trace", []).append(trace)
+        yield {"type": "final", "tool_trace": state["tool_trace"]}
+
     def _build_graph(self):
         if StateGraph is None:
             return None
