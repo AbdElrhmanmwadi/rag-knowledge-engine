@@ -17,8 +17,8 @@ class VoiceController:
     def transcribe_file(self, audio_path: str, language: Optional[str] = None) -> STTResult:
         return self.voice_provider.transcribe_file(audio_path=audio_path, language=language)
 
-    def synthesize_to_wav_bytes(self, text: str) -> bytes:
-        return self.voice_provider.synthesize_to_wav_bytes(text=text)
+    def synthesize_to_wav_bytes(self, text: str, language: Optional[str] = None) -> bytes:
+        return self.voice_provider.synthesize_to_wav_bytes(text=text, language=language)
 
     def wav_bytes_to_base64(self, wav_bytes: bytes) -> str:
         return base64.b64encode(wav_bytes).decode("ascii")
