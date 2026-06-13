@@ -200,6 +200,58 @@ class TranslationProviderTests(unittest.TestCase):
         translated_bytes = self._async_test(run_test())
         self.assertEqual(translated_bytes, b"translated file bytes")
 
+    def test_translate_file_sends_api_key_as_form_field_not_bearer_header(self):
+        """api_key must be a multipart form field, per the LibreTranslate file API
+        (https://docs.libretranslate.com/api/operations/translate_file/), never an
+        Authorization: Bearer header."""
+        provider = LibreTranslateProvider(
+            api_key="abc-123-key",
+            file_endpoint_url="http://localhost:5000/translate/file",
+            max_retries=0,
+            retry_backoff_seconds=0,
+        )
+
+        captured = {}
+
+        def fake_urlopen(req, *args, **kwargs):
+            captured["request"] = req
+            return FakeResponse(b"translated file bytes", content_type="application/octet-stream")
+
+        async def run_test():
+            with patch("stores.translation.providers.LibreTranslateProvider.request.urlopen", side_effect=fake_urlopen):
+                return await provider.translate_file(b"hello", "test.txt", source_lang="en", target_lang="ar")
+
+        self._async_test(run_test())
+        req = captured["request"]
+        # No Authorization header anywhere (urllib lowercases header keys).
+        self.assertIsNone(req.get_header("Authorization"))
+        self.assertNotIn("authorization", {k.lower() for k in req.headers})
+        # api_key present as a form field in the multipart body.
+        body = req.data
+        self.assertIn(b'name="api_key"', body)
+        self.assertIn(b"abc-123-key", body)
+
+    def test_translate_file_omits_api_key_field_when_unset(self):
+        """No api_key configured (this project's self-hosted setup) → no api_key field."""
+        provider = LibreTranslateProvider(
+            file_endpoint_url="http://localhost:5000/translate/file",
+            max_retries=0,
+            retry_backoff_seconds=0,
+        )
+
+        captured = {}
+
+        def fake_urlopen(req, *args, **kwargs):
+            captured["request"] = req
+            return FakeResponse(b"translated file bytes", content_type="application/octet-stream")
+
+        async def run_test():
+            with patch("stores.translation.providers.LibreTranslateProvider.request.urlopen", side_effect=fake_urlopen):
+                return await provider.translate_file(b"hello", "test.txt", source_lang="en", target_lang="ar")
+
+        self._async_test(run_test())
+        self.assertNotIn(b'name="api_key"', captured["request"].data)
+
     def test_translate_file_raises_when_translated_file_url_is_missing(self):
         """Test that translate_file rejects JSON responses without translatedFileUrl."""
         provider = LibreTranslateProvider(
