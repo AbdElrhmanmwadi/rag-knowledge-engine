@@ -55,8 +55,11 @@ class Settings(BaseSettings):
     STT_WARMUP_TIMEOUT_SECONDS: int = 1000
 
     TTS_BACKEND: str = "PIPER"
+    TTS_TIMEOUT_SECONDS: int = 60
     PIPER_EXE_PATH: str = None
     PIPER_MODEL_PATH: str = None
+    # Arabic voice; answers detected as Arabic are synthesized with this model.
+    PIPER_MODEL_PATH_AR: Optional[str] = None
 
     # Optional: allow non-wav uploads (mp3/m4a/...) and convert via ffmpeg
     FFMPEG_PATH: Optional[str] = None
