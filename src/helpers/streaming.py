@@ -8,6 +8,7 @@ events to the client as they arrive.
 import asyncio
 import itertools
 import json
+import re
 import time
 
 _SENTINEL = object()
@@ -33,6 +34,31 @@ async def aiter_in_thread(generator):
 def sse(event: str, data: dict) -> str:
     """Format one Server-Sent Events block."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# A sentence is a run of non-terminator characters ending in a terminator.
+# Terminators cover English (. ! ?), Arabic question mark (؟), and newlines.
+_SENTENCE = re.compile(r"[^.!?؟\n]*[.!?؟\n]", re.UNICODE)
+_HAS_WORD = re.compile(r"\w", re.UNICODE)  # \w matches Arabic letters too
+
+
+def split_sentences(buffer: str):
+    """Split accumulated text into (complete_sentences, remainder).
+
+    Used by the voice stream to synthesize speech one sentence at a time: feed it
+    the growing answer buffer, speak the returned complete sentences, and carry the
+    remainder (text with no terminator yet) into the next call. Sentences with no
+    word characters (e.g. stray punctuation/whitespace) are dropped so Piper is
+    never asked to speak nothing.
+    """
+    sentences = []
+    last_end = 0
+    for match in _SENTENCE.finditer(buffer):
+        sentence = match.group().strip()
+        if sentence and _HAS_WORD.search(sentence):
+            sentences.append(sentence)
+        last_end = match.end()
+    return sentences, buffer[last_end:]
 
 
 def is_rate_limit_error(exc: Exception) -> bool:

@@ -7,12 +7,13 @@ from urllib.parse import quote
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from controllers.NLPController import NLPController
 from helpers.auth_dependencies import get_current_user
 from helpers.config import Settings, get_settings
 from helpers.db import get_db
+from helpers.streaming import sse
 from models.enums.ResponseEnums import ResponseStatus
 from models.user_model import User
 from services.agent_service import detect_lang
@@ -179,6 +180,7 @@ async def voice_chat_endpoint(
     audio: UploadFile = File(...),
     limit: int = Form(30),
     return_audio_base64: bool = Form(True),
+    stream: bool = Form(False),
     language: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -196,10 +198,55 @@ async def voice_chat_endpoint(
 
     voice = request.app.state.voice_controller
     audio_path = voice.unique_audio_path(project_id=str(project_id), suffix=ext)
+    # The streaming branch hands the temp file to a generator that outlives this
+    # function, so it owns cleanup; the finally below must not delete it early.
+    stream_owns_cleanup = False
 
     try:
         if not await _write_upload_capped(audio, audio_path, app_settings):
             return _file_size_error(app_settings)
+
+        if stream:
+            nlp_controller = NLPController(
+                embedding_client=request.app.embedding_client,
+                vectordb_client=request.app.vectordb_client,
+                generation_client=request.app.generation_client,
+                template_parser=request.app.template_parser,
+            )
+
+            async def event_stream():
+                try:
+                    async for event in voice.voice_chat_stream(
+                        audio_path=audio_path,
+                        project=project,
+                        nlp_controller=nlp_controller,
+                        limit=limit,
+                        language=language,
+                    ):
+                        yield sse(event["event"], event["data"])
+                except asyncio.TimeoutError:
+                    logger.warning("Voice chat STT timed out (stream) for project_id=%s", project_id)
+                    yield sse("error", {"detail": f"Speech-to-text exceeded {app_settings.STT_TIMEOUT_SECONDS} seconds"})
+                except Exception:
+                    logger.exception("Voice chat stream failed for project_id=%s", project_id)
+                    yield sse("error", {"detail": "Voice chat failed"})
+                finally:
+                    try:
+                        if os.path.exists(audio_path):
+                            os.remove(audio_path)
+                    except Exception:
+                        pass
+
+            stream_owns_cleanup = True
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "Connection": "keep-alive",
+                },
+            )
 
         stt = await asyncio.wait_for(
             asyncio.to_thread(voice.transcribe_file, audio_path, language),
@@ -281,8 +328,11 @@ async def voice_chat_endpoint(
             content={"signal": ResponseStatus.VOICE_CHAT_FAILED.value, "message": "Voice chat failed"},
         )
     finally:
-        try:
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-        except Exception:
-            pass
+        # In the streaming branch the generator owns the temp file; deleting it here
+        # would pull it out from under the not-yet-consumed stream.
+        if not stream_owns_cleanup:
+            try:
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+            except Exception:
+                pass
