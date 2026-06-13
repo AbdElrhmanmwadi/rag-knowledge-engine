@@ -145,6 +145,38 @@ class CoHereProvider(LLMInterface):
             "total_tokens": int(input_tokens or 0) + int(output_tokens or 0),
         }
     
+    def rerank_documents(self, query:str, documents:List[str], model:str, top_n:int=None):
+        """Reorder documents by relevance to query using Cohere Rerank.
+
+        Returns a list of original indices in ranked order (best first), trimmed
+        to top_n. Returns None if the call cannot be made, so the caller can fall
+        back to the vector-search order instead of dropping results.
+        """
+        if not self.client:
+            self.logger.error("Cohere CLIENT was not set ")
+            return None
+        if not documents:
+            return []
+        response = self._rerank(
+            query=query,
+            documents=documents,
+            model=model,
+            top_n=top_n if top_n else len(documents),
+        )
+        if response is None:
+            return None
+        return [result.index for result in response.results]
+
+    @traceable(run_type="chain", name="cohere.rerank", metadata={"ls_provider": "cohere"})
+    def _rerank(self, query:str, documents:List[str], model:str, top_n:int):
+        add_llm_run_metadata(model=model, provider="cohere")
+        return self.client.rerank(
+            model=model,
+            query=query,
+            documents=documents,
+            top_n=top_n,
+        )
+
     def embed_text(self, text:Union[str,List[str]],document_type:str=None):
         if not self.client:
                     self.logger.error("OpenAI CLIENT was not set ")

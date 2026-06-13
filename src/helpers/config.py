@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     FFMPEG_TIMEOUT_SECONDS: int = 60
 
     # =========================
+    # Reranking (optional; Cohere cross-encoder reorders vector hits)
+    # =========================
+    # Off by default: when False, retrieval behaves exactly as before.
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL_ID: str = "rerank-multilingual-v3.0"
+    # How many candidates to pull from the vector DB before reranking. The final
+    # count returned to the caller stays the requested `limit`.
+    RERANK_CANDIDATE_LIMIT: int = 30
+
+    # =========================
     # Agent
     # =========================
     AGENT_DEFAULT_RETRIEVAL_LIMIT: int = 5

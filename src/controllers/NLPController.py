@@ -103,19 +103,58 @@ class NLPController(BaseController):
             collection_name = self.create_collection_name(project_id= project.project_id)
             vectors=self.embedding_client.embed_text(text=text,document_type=DocumentTypeEnum.QUERY.value)
             query_vector=None
-            
+
             if not vectors or len(vectors)==0:
                 return False
             if isinstance(vectors,list) and len(vectors)>0:
                 query_vector=vectors[0]
             if query_vector is None:
                 return False
+            # When reranking is on, pull a wider candidate set so the reranker has
+            # something to reorder; the final result is still trimmed back to `limit`.
+            rerank_enabled = getattr(self.app_settings, "RERANK_ENABLED", False)
+            fetch_limit = max(limit, self.app_settings.RERANK_CANDIDATE_LIMIT) if rerank_enabled else limit
             search_results=await self.vectordb_client.search_by_vector(collection_name=collection_name,
                                                                        vector=query_vector ,
-                                                                       limit=limit)
+                                                                       limit=fetch_limit)
             if search_results is None:
                 return False
+            if rerank_enabled and search_results:
+                search_results = await self._rerank_results(query=text, documents=search_results, top_n=limit)
             return search_results
+
+    def _rerank_client(self):
+        """First configured client that can rerank (Cohere). None if neither can."""
+        for client in (self.generation_client, self.embedding_client):
+            if hasattr(client, "rerank_documents"):
+                return client
+        return None
+
+    async def _rerank_results(self, query: str, documents: list, top_n: int) -> list:
+        """Reorder vector hits with a reranker and keep the top_n.
+
+        Any failure (no rerank-capable client, API error, empty result) falls back
+        to the original vector-search order so retrieval never returns fewer or no
+        documents because of reranking.
+        """
+        client = self._rerank_client()
+        if client is None:
+            return documents[:top_n]
+        texts = [getattr(doc, "text", "") or "" for doc in documents]
+        try:
+            ranked_indices = await asyncio.to_thread(
+                client.rerank_documents,
+                query,
+                texts,
+                self.app_settings.RERANK_MODEL_ID,
+                top_n,
+            )
+        except Exception as e:
+            logger.warning(f"Rerank failed, using vector-search order: {e}")
+            return documents[:top_n]
+        if not ranked_indices:
+            return documents[:top_n]
+        return [documents[i] for i in ranked_indices if 0 <= i < len(documents)]
     def _build_history_messages(self, history):
         """Convert a neutral [{'role','content'}] history into provider-formatted messages.
 

@@ -6,6 +6,7 @@ class PushRequest(BaseModel):
 class searchRequest(BaseModel):
     text:str
     limit:Optional[int]=5
+    stream:bool=False
 class TranslationRequest(BaseModel):
     page_number: Optional[int] = 1
     page_size: Optional[int] = 10
