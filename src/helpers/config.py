@@ -122,7 +122,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # Ignore env vars this branch's Settings doesn't define. The project shares
+        # one .env across feature branches, so a var added for a feature on another
+        # branch (e.g. RERANK_*) must not crash a branch that doesn't define it.
+        extra = "ignore"
 
-settings = Settings()   
+settings = Settings()
 def get_settings():
         return settings
