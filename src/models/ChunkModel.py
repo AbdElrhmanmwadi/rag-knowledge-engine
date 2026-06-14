@@ -65,3 +65,19 @@ class ChunkModel(BaseDataModel):
                 result = await session.execute(query)
                 count = result.scalar()
             return count
+
+    async def get_chunk_counts_by_asset(self, project_id) -> dict:
+        """Map asset_id -> number of chunks for a project (one grouped query).
+
+        Lets the file listing show per-file processing status without N queries.
+        Files with zero chunks simply won't appear in the map (treat as 0).
+        """
+        async with self.db_client() as session:
+            async with session.begin():
+                query = (
+                    select(DataChunk.chunk_asset_id, func.count(DataChunk.chunk_id))
+                    .where(DataChunk.chunk_project_id == project_id)
+                    .group_by(DataChunk.chunk_asset_id)
+                )
+                result = await session.execute(query)
+                return {asset_id: count for asset_id, count in result.all()}

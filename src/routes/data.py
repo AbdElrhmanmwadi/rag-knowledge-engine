@@ -218,16 +218,22 @@ async def list_files(
             )
         raise
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
 
     project_files = await asset_model.get_all_project_asset(
         asset_project_id=project.project_id, asset_type=AssetTypeEnum.FILE.value
     )
+    # One grouped query for all files; chunk_count>0 means the file was processed
+    # (split into chunks). file_id is the asset_id, which keys the counts map.
+    chunk_counts = await chunk_model.get_chunk_counts_by_asset(project_id=project.project_id)
     files_list = [
         {
             "file_id": record.asset_id,
             "file_size": record.asset_size,
             "file_name": record.asset_name,
             "file_type": record.asset_type,
+            "chunk_count": chunk_counts.get(record.asset_id, 0),
+            "processed": chunk_counts.get(record.asset_id, 0) > 0,
             "file_created_at": record.created_at.isoformat() if getattr(record, "created_at", None) is not None else None,
             "file_updated_at": record.updated_at.isoformat() if getattr(record, "updated_at", None) is not None else None,
         }
