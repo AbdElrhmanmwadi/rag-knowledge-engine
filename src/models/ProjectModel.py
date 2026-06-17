@@ -54,6 +54,27 @@ class ProjectModel(BaseDataModel):
 
             return project_obj
         
+    async def get_projects_for_owner(self, owner_id: int, page: int = 1, page_size: int = 50):
+        async with self.db_client() as session:
+            total_query = (
+                select(func.count(Project.project_id))
+                .where(Project.owner_id == owner_id)
+            )
+            total_documents = (await session.execute(total_query)).scalar_one()
+            total_pages = total_documents // page_size
+            if total_documents % page_size > 0:
+                total_pages += 1
+            query = (
+                select(Project)
+                .where(Project.owner_id == owner_id)
+                .order_by(Project.created_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+            result = await session.execute(query)
+            projects = result.scalars().all()
+            return projects, total_pages, total_documents
+
     async def get_all_projects(self,page:int=1,page_size:int=10):
         async with self.db_client() as session:
             async with session.begin():
