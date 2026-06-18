@@ -25,6 +25,7 @@ class ResponseStatus(Enum):
     TRANSLATION_JOB_CREATED= "translation_job_created_success"
     TRANSLATION_STATUS_SUCCESS= "translation_status_success"
     TRANSLATION_STATUS_FAILED= "translation_status_failed"
+    PROJECT_LIST_SUCCESS="project_list_success"
     PROJECT_DELETE_SUCCESS="project_delete_success"
     PROJECT_DELETE_FAILED="project_delete_failed"
     PROJECT_ID_ERROR="project_id_error"
