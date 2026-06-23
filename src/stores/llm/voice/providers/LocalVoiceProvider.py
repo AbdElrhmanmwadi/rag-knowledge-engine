@@ -132,21 +132,37 @@ class LocalVoiceProvider(VoiceProviderInterface):
             raise RuntimeError("PIPER_EXE_PATH is not configured")
         return exe
 
-    def _piper_model(self) -> str:
+    def _piper_model(self, language: Optional[str] = None) -> str:
+        # Piper voices are single-language; an Arabic answer through an English
+        # voice comes out as gibberish, so "ar" routes to the Arabic model when
+        # one is configured and anything else falls back to the default voice.
+        if language == "ar":
+            arabic_model = getattr(self.settings, "PIPER_MODEL_PATH_AR", None)
+            if arabic_model:
+                return arabic_model
+            logger.warning("PIPER_MODEL_PATH_AR is not configured; falling back to the default voice")
         model_path = self.settings.PIPER_MODEL_PATH
         if not model_path:
             raise RuntimeError("PIPER_MODEL_PATH is not configured")
         return model_path
 
-    def synthesize_to_wav_bytes(self, text: str) -> bytes:
+    def synthesize_to_wav_bytes(self, text: str, language: Optional[str] = None) -> bytes:
         exe = self._piper_exe()
-        model = self._piper_model()
+        model = self._piper_model(language)
 
         out_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         out_file.close()
         try:
             cmd = [exe, "-m", model, "-f", out_file.name]
-            completed = subprocess.run(cmd, input=text.encode("utf-8"), capture_output=True)
+            try:
+                completed = subprocess.run(
+                    cmd,
+                    input=text.encode("utf-8"),
+                    capture_output=True,
+                    timeout=self.settings.TTS_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("piper synthesis timed out") from exc
             if completed.returncode != 0:
                 stderr = (completed.stderr or b"").decode("utf-8", errors="ignore").strip()
                 stdout = (completed.stdout or b"").decode("utf-8", errors="ignore").strip()

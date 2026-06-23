@@ -193,7 +193,7 @@ class LibreTranslateProvider(TranslationProviderInterface):
             source_lang=source_language,
             target_lang=target_language
         )
-        
+
         # Build request to file endpoint
         http_request = request.Request(
             url=self.file_endpoint_url,
@@ -203,10 +203,7 @@ class LibreTranslateProvider(TranslationProviderInterface):
             },
             method="POST"
         )
-        
-        if self.api_key:
-            http_request.add_header("Authorization", f"Bearer {self.api_key}")
-        
+
         # Execute the request asynchronously
         translated_file_bytes = await asyncio.to_thread(
             self._send_file_request_with_retries,
@@ -238,17 +235,26 @@ class LibreTranslateProvider(TranslationProviderInterface):
         lines.append(b"")
         lines.append(target_lang.encode("utf-8"))
         
+        # Add API key field. LibreTranslate's /translate/file expects api_key as a
+        # multipart form field, NOT an Authorization: Bearer header — see
+        # https://docs.libretranslate.com/api/operations/translate_file/
+        if self.api_key:
+            lines.append(f"--{boundary}".encode("utf-8"))
+            lines.append(b'Content-Disposition: form-data; name="api_key"')
+            lines.append(b"")
+            lines.append(self.api_key.encode("utf-8"))
+
         # Add file field
         lines.append(f"--{boundary}".encode("utf-8"))
         lines.append(f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode("utf-8"))
         lines.append(b"Content-Type: application/octet-stream")
         lines.append(b"")
         lines.append(file_bytes)
-        
+
         # Add closing boundary
         lines.append(f"--{boundary}--".encode("utf-8"))
         lines.append(b"")
-        
+
         return b"\r\n".join(lines)
 
     def _send_file_request_with_retries(self, http_request: request.Request) -> bytes:

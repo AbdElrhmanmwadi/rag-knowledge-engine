@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from fastapi import HTTPException, status
 
 from controllers.NLPController import NLPController
@@ -6,6 +9,8 @@ from models.db_schemes.minirag.scheme import Project
 from models.user_model import User
 from services.agent_service import AgentService
 from services.agent_tools import AgentTools
+
+logger = logging.getLogger(__name__)
 
 
 class AgentController:
@@ -38,14 +43,14 @@ class AgentController:
             rerank_candidate_limit=rerank_candidate_limit,
         )
 
-    async def chat(
+    async def _prepare_session(
         self,
         project: Project,
         user: User,
         message: str,
-        session_id: int | None = None,
-        limit: int | None = None,
-    ) -> dict:
+        session_id: int | None,
+    ):
+        """Create or load the session and return (session_model, session, history)."""
         session_model = await AgentSessionModel.create_instance(db_client=self.db_client)
         history: list[dict] = []
         if session_id is None:
@@ -74,6 +79,19 @@ class AgentController:
         if self.max_history_messages > 0:
             history = history[-self.max_history_messages:]
 
+        return session_model, agent_session, history
+
+    async def chat(
+        self,
+        project: Project,
+        user: User,
+        message: str,
+        session_id: int | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        session_model, agent_session, history = await self._prepare_session(
+            project=project, user=user, message=message, session_id=session_id
+        )
         await session_model.add_message(
             session_id=agent_session.session_id,
             role="user",
@@ -98,6 +116,82 @@ class AgentController:
             "session_id": agent_session.session_id,
             **result,
         }
+
+    async def chat_stream(
+        self,
+        project: Project,
+        user: User,
+        message: str,
+        session_id: int | None = None,
+        limit: int | None = None,
+    ):
+        """Yield {"event", "data"} dicts for the SSE route: meta, delta*, done.
+
+        Mirrors chat(): the user message is persisted up front, the assistant
+        message exactly once after the stream finishes — never a partial answer.
+        """
+        session_model, agent_session, history = await self._prepare_session(
+            project=project, user=user, message=message, session_id=session_id
+        )
+        await session_model.add_message(
+            session_id=agent_session.session_id,
+            role="user",
+            content=message,
+        )
+
+        sources: list = []
+        tool_trace: list = []
+        answer_parts: list[str] = []
+        try:
+            async for event in self.agent_service.run_stream(
+                project=project,
+                message=message,
+                limit=limit or self.default_limit,
+                history=history,
+            ):
+                if event["type"] == "meta":
+                    sources = event["sources"]
+                    tool_trace = event["tool_trace"]
+                    yield {
+                        "event": "meta",
+                        "data": {
+                            "session_id": agent_session.session_id,
+                            "sources": sources,
+                            "tool_trace": tool_trace,
+                        },
+                    }
+                elif event["type"] == "delta":
+                    answer_parts.append(event["text"])
+                    yield {"event": "delta", "data": {"text": event["text"]}}
+                elif event["type"] == "final":
+                    # Completed trace (includes the rag_answer entry that did not
+                    # exist yet when meta was sent) — persisted, not re-emitted.
+                    tool_trace = event["tool_trace"]
+        except (GeneratorExit, asyncio.CancelledError):
+            # Client disconnected mid-stream: do not persist a partial answer.
+            raise
+        except Exception:
+            logger.exception("Agent stream failed mid-generation")
+            yield {"event": "error", "data": {"detail": "Generation failed mid-stream"}}
+            return
+
+        answer = "".join(answer_parts).strip()
+        if not answer:
+            # Keep session history consistent with the non-stream fallback.
+            answer = "I could not generate an answer from the retrieved project context."
+
+        # Persist before emitting "done" so a disconnect on the last event can
+        # never lose the completed answer.
+        await session_model.add_message(
+            session_id=agent_session.session_id,
+            role="assistant",
+            content=answer,
+            metadata={
+                "sources": sources,
+                "tool_trace": tool_trace,
+            },
+        )
+        yield {"event": "done", "data": {"answer": answer}}
 
     async def list_sessions(self, project: Project, user: User) -> list:
         session_model = await AgentSessionModel.create_instance(db_client=self.db_client)

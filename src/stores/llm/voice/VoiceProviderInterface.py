@@ -20,5 +20,6 @@ class VoiceProviderInterface(ABC):
         pass
 
     @abstractmethod
-    def synthesize_to_wav_bytes(self, text: str) -> bytes:
+    def synthesize_to_wav_bytes(self, text: str, language: Optional[str] = None) -> bytes:
+        """language selects the voice model (e.g. "ar"); None uses the default voice."""
         pass

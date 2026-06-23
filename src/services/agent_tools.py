@@ -113,3 +113,23 @@ class AgentTools:
             summary="Generated answer from project context",
             data=str(answer),
         )
+
+    async def rag_answer_stream(
+        self,
+        project: Project,
+        query: str,
+        limit: int,
+        history: list | None = None,
+        documents: list | None = None,
+    ):
+        """Yield answer text chunks. Unlike rag_answer this cannot return an
+        AgentToolResult; the caller builds the trace entry after the stream ends
+        (status "success" if any chunk arrived, else "empty")."""
+        async for chunk in self.nlp_controller.answer_rag_question_stream(
+            query=query,
+            project=project,
+            limit=limit,
+            history=history,
+            documents=documents,
+        ):
+            yield chunk
