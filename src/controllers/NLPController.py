@@ -115,6 +115,33 @@ class NLPController(BaseController):
             if search_results is None:
                 return False
             return search_results
+    @traceable(run_type="chain", name="rerank")
+    async def rerank_documents(self, query: str, documents: list, top_n: int):
+        """Reorder retrieved chunks by cross-encoder relevance, keeping the top_n.
+
+        Falls back to the original vector-search order (truncated to top_n) when
+        the provider does not support reranking or the rerank call fails, so the
+        answer step never breaks because of reranking.
+        """
+        if not documents:
+            return documents
+        rerank = getattr(self.generation_client, "rerank_documents", None)
+        if not callable(rerank):
+            logger.warning("Generation provider does not support reranking; using vector order")
+            return documents[:top_n]
+        # Run the sync provider call off the event loop.
+        results = await asyncio.to_thread(
+            rerank, query, [doc.text for doc in documents], top_n
+        )
+        if not results:
+            return documents[:top_n]
+        reordered = []
+        for result in results:
+            idx = getattr(result, "index", None)
+            if idx is not None and 0 <= idx < len(documents):
+                reordered.append(documents[idx])
+        return reordered or documents[:top_n]
+
     def _build_history_messages(self, history):
         """Convert a neutral [{'role','content'}] history into provider-formatted messages.
 
