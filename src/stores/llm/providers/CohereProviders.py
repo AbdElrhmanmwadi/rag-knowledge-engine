@@ -22,12 +22,44 @@ class CoHereProvider(LLMInterface):
         self.genaration_model_id=None
         self.embedding_model_id=None
         self.embedding_size=None
+        self.rerank_model_id=None
         self.enums=CohereEnums
         self.client=cohere.Client(api_key=self.api_key)
         self.logger=logging.getLogger(__name__)
 
     def set_genaration_model(self, model_id:str):
         self.genaration_model_id=model_id
+
+    def set_rerank_model(self, model_id:str):
+        self.rerank_model_id=model_id
+
+    def rerank_documents(self, query:str, documents:List[str], top_n:int):
+        """Re-score (query, document) pairs with Cohere's cross-encoder reranker.
+
+        Returns the reranker results ordered by relevance, each carrying the
+        original `index` into `documents` and a `relevance_score`. Returns None
+        on any failure so callers can fall back to the vector-search order.
+        """
+        if not self.client:
+            self.logger.error("Cohere CLIENT was not set")
+            return None
+        model_id = self.rerank_model_id
+        if not model_id:
+            self.logger.error("rerank model for Cohere was not set")
+            return None
+        if not documents:
+            return []
+        try:
+            response = self.client.rerank(
+                model=model_id,
+                query=query,
+                documents=documents,
+                top_n=min(top_n, len(documents)),
+            )
+        except Exception as e:
+            self.logger.error(f"Error while reranking with Cohere: {e}")
+            return None
+        return getattr(response, "results", None)
 
     def set_embedding_model(self, model_id:str,embedding_size:int):
          self.embedding_model_id=model_id
