@@ -71,6 +71,20 @@ class AgentTools:
             data=documents,
         )
 
+    async def rerank(self, query: str, documents: list, top_n: int) -> AgentToolResult:
+        reordered = await self.nlp_controller.rerank_documents(
+            query=query,
+            documents=documents,
+            top_n=top_n,
+        )
+        reordered = reordered or []
+        return AgentToolResult(
+            name="rerank",
+            status="success",
+            summary=f"Reranked {len(documents)} chunk(s) down to {len(reordered)}",
+            data=reordered,
+        )
+
     async def rag_answer(
         self,
         project: Project,
