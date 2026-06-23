@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     TTS_BACKEND: str = "PIPER"
     PIPER_EXE_PATH: str = None
     PIPER_MODEL_PATH: str = None
+    PIPER_MODEL_PATH_AR: Optional[str] = None
 
     # Optional: allow non-wav uploads (mp3/m4a/...) and convert via ffmpeg
     FFMPEG_PATH: Optional[str] = None
@@ -70,6 +71,15 @@ class Settings(BaseSettings):
     AGENT_MAX_OUTPUT_TOKENS: int = 500
     # Number of most-recent prior messages fed back to the model as conversation context
     AGENT_MAX_HISTORY_MESSAGES: int = 10
+
+    # =========================
+    # Reranking (optional, Cohere cross-encoder)
+    # When enabled, retrieval fetches RERANK_CANDIDATE_LIMIT chunks then reranks
+    # them down to the requested limit for a more relevant answer context.
+    # =========================
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL_ID: str = "rerank-multilingual-v3.0"
+    RERANK_CANDIDATE_LIMIT: int = 30
 
     # =========================
     # Observability (LangSmith)
