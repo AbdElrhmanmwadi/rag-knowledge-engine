@@ -112,9 +112,17 @@ class AgentState(TypedDict, total=False):
 
 
 class AgentService:
-    def __init__(self, tools: AgentTools, default_limit: int = 5):
+    def __init__(
+        self,
+        tools: AgentTools,
+        default_limit: int = 5,
+        rerank_enabled: bool = False,
+        rerank_candidate_limit: int = 30,
+    ):
         self.tools = tools
         self.default_limit = default_limit
+        self.rerank_enabled = rerank_enabled
+        self.rerank_candidate_limit = rerank_candidate_limit
         self.graph = self._build_graph()
 
     # Root span for the whole request: the traced steps below (condense_query,
@@ -187,14 +195,30 @@ class AgentService:
             state.setdefault("tool_trace", []).append(self._trace(rewrite))
             query = rewrite.data or query
         state["search_query"] = query
+        # With reranking on, fetch a wider candidate pool first, then let the
+        # cross-encoder narrow it back down to the requested limit.
+        search_limit = state["limit"]
+        if self.rerank_enabled:
+            search_limit = max(state["limit"], self.rerank_candidate_limit)
         result = await self.tools.rag_search(
             project=state["project"],
             query=query,
-            limit=state["limit"],
+            limit=search_limit,
         )
-        state["retrieved_documents"] = result.data or []
-        state["sources"] = self._format_sources(state["retrieved_documents"])
+        documents = result.data or []
         state.setdefault("tool_trace", []).append(self._trace(result))
+
+        if self.rerank_enabled and documents:
+            rerank_result = await self.tools.rerank(
+                query=query,
+                documents=documents,
+                top_n=state["limit"],
+            )
+            documents = rerank_result.data or documents[: state["limit"]]
+            state.setdefault("tool_trace", []).append(self._trace(rerank_result))
+
+        state["retrieved_documents"] = documents
+        state["sources"] = self._format_sources(state["retrieved_documents"])
         return state
 
     async def _answer(self, state: AgentState) -> AgentState:
