@@ -28,6 +28,8 @@ def _controller(request: Request, settings: Settings) -> AgentController:
         template_parser=request.app.template_parser,
         default_limit=settings.AGENT_DEFAULT_RETRIEVAL_LIMIT,
         max_history_messages=settings.AGENT_MAX_HISTORY_MESSAGES,
+        rerank_enabled=settings.RERANK_ENABLED,
+        rerank_candidate_limit=settings.RERANK_CANDIDATE_LIMIT,
     )
 
 

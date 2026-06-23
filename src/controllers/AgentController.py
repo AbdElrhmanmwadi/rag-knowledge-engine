@@ -23,6 +23,8 @@ class AgentController:
         template_parser,
         default_limit: int = 5,
         max_history_messages: int = 10,
+        rerank_enabled: bool = False,
+        rerank_candidate_limit: int = 30,
     ):
         nlp_controller = NLPController(
             embedding_client=embedding_client,
@@ -34,7 +36,12 @@ class AgentController:
         self.db_client = db_client
         self.default_limit = default_limit
         self.max_history_messages = max_history_messages
-        self.agent_service = AgentService(tools=tools, default_limit=default_limit)
+        self.agent_service = AgentService(
+            tools=tools,
+            default_limit=default_limit,
+            rerank_enabled=rerank_enabled,
+            rerank_candidate_limit=rerank_candidate_limit,
+        )
 
     async def _prepare_session(
         self,

@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     AGENT_MAX_HISTORY_MESSAGES: int = 10
 
     # =========================
+    # Reranking (optional, Cohere cross-encoder)
+    # When enabled, retrieval fetches RERANK_CANDIDATE_LIMIT chunks then reranks
+    # them down to the requested limit for a more relevant answer context.
+    # =========================
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL_ID: str = "rerank-multilingual-v3.0"
+    RERANK_CANDIDATE_LIMIT: int = 30
+
+    # =========================
     # Observability (LangSmith)
     # Accept both the modern LANGSMITH_* and the legacy LANGCHAIN_* env names.
     # =========================

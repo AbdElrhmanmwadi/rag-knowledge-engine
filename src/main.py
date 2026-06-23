@@ -67,6 +67,9 @@ async def startup_event():
 
     app.generation_client = LLM_Provider_Factory.create(provider=settings.GENERATION_BACKEND)
     app.generation_client.set_generation_model(model_id = settings.GENERATION_MODEL_ID)
+    # Reranking is Cohere-specific; set the model only when the provider supports it.
+    if settings.RERANK_ENABLED and hasattr(app.generation_client, "set_rerank_model"):
+        app.generation_client.set_rerank_model(model_id=settings.RERANK_MODEL_ID)
 
     app.embedding_client = LLM_Provider_Factory.create(provider=settings.EMBEDDING_BACKEND)
     app.embedding_client.set_embedding_model(model_id=settings.EMBEDDING_MODEL_ID,
