@@ -144,6 +144,10 @@ async def process_endpoint(
             collection_name=nlp_Controller.create_collection_name(project_id=project.project_id),
             project_id=project.project_id,
         )
+        # Reindexing makes previously cached answers stale; drop the answer cache.
+        await request.app.vectordb_client.delete_collection(
+            collection_name=nlp_Controller.create_cache_collection_name(project_id=project.project_id),
+        )
 
     for asset_id, file_id in project_file_ids.items():
         file_content = process_controller.get_file_content(file_id=file_id)
