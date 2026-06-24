@@ -113,6 +113,8 @@ class AgentState(TypedDict, total=False):
     # genuine generated answer (answer_cacheable) is written back to the cache.
     cache_hit: bool
     answer_cacheable: bool
+    # Query embedding from cache lookup, reused for retrieval on a miss (no re-embed).
+    query_vector: list[Any]
 
 
 class AgentService:
@@ -120,15 +122,11 @@ class AgentService:
         self,
         tools: AgentTools,
         default_limit: int = 5,
-        rerank_enabled: bool = False,
-        rerank_candidate_limit: int = 30,
         cache_enabled: bool = False,
         cache_threshold: float = 0.95,
     ):
         self.tools = tools
         self.default_limit = default_limit
-        self.rerank_enabled = rerank_enabled
-        self.rerank_candidate_limit = rerank_candidate_limit
         self.cache_enabled = cache_enabled
         self.cache_threshold = cache_threshold
         self.graph = self._build_graph()
@@ -189,6 +187,20 @@ class AgentService:
             "sources": [],
         }
         state = await self._classify_intent(state)
+        # Answer cache: a hit returns the stored answer as a single delta, skipping
+        # retrieval + generation entirely. On a miss the embedding is reused by _retrieve.
+        state = await self._cache_lookup(state)
+        if state.get("cache_hit"):
+            state = await self._finalize(state)
+            yield {
+                "type": "meta",
+                "sources": state.get("sources") or [],
+                "tool_trace": list(state.get("tool_trace") or []),
+            }
+            yield {"type": "delta", "text": state["answer"]}
+            yield {"type": "final", "tool_trace": state.get("tool_trace") or []}
+            return
+
         if state["needs_rag"]:
             state = await self._retrieve(state)
         # Retrieval is done before generation starts, so the client can render
@@ -209,6 +221,7 @@ class AgentService:
             return
 
         got_chunks = False
+        answer_parts: list[str] = []
         async for chunk in self.tools.rag_answer_stream(
             project=state["project"],
             query=state.get("search_query") or state["message"],
@@ -219,6 +232,7 @@ class AgentService:
         ):
             if chunk:
                 got_chunks = True
+                answer_parts.append(chunk)
                 yield {"type": "delta", "text": chunk}
 
         if got_chunks:
@@ -227,6 +241,10 @@ class AgentService:
                 "status": "success",
                 "summary": "Generated answer from project context",
             }
+            # Cache the fully streamed answer so future similar questions hit the cache.
+            state["answer"] = "".join(answer_parts)
+            state["answer_cacheable"] = True
+            state = await self._cache_store(state)
         else:
             trace = {
                 "name": "rag_answer",
@@ -281,8 +299,11 @@ class AgentService:
             threshold=self.cache_threshold,
         )
         state.setdefault("tool_trace", []).append(self._trace(result))
-        if result.status == "hit" and result.data is not None:
-            cached = result.data
+        data = result.data or {}
+        # Keep the embedding so _retrieve can reuse it on a miss.
+        state["query_vector"] = data.get("query_vector")
+        cached = data.get("hit")
+        if result.status == "hit" and cached is not None:
             metadata = cached.meta_data or {}
             state["answer"] = metadata.get("answer") or ""
             state["sources"] = metadata.get("sources") or []
@@ -299,27 +320,19 @@ class AgentService:
             state.setdefault("tool_trace", []).append(self._trace(rewrite))
             query = rewrite.data or query
         state["search_query"] = query
-        # With reranking on, fetch a wider candidate pool first, then let the
-        # cross-encoder narrow it back down to the requested limit.
-        search_limit = state["limit"]
-        if self.rerank_enabled:
-            search_limit = max(state["limit"], self.rerank_candidate_limit)
+        # Reuse the embedding from cache lookup only when the query was NOT rewritten
+        # (a rewritten follow-up is a different string, so its embedding differs).
+        reuse_vector = state.get("query_vector") if query == state["message"] else None
+        # Reranking (when enabled) runs inside search_in_vectordb: it fetches a wider
+        # candidate pool and trims back to `limit`, so there is no extra rerank here.
         result = await self.tools.rag_search(
             project=state["project"],
             query=query,
-            limit=search_limit,
+            limit=state["limit"],
+            query_vector=reuse_vector,
         )
         documents = result.data or []
         state.setdefault("tool_trace", []).append(self._trace(result))
-
-        if self.rerank_enabled and documents:
-            rerank_result = await self.tools.rerank(
-                query=query,
-                documents=documents,
-                top_n=state["limit"],
-            )
-            documents = rerank_result.data or documents[: state["limit"]]
-            state.setdefault("tool_trace", []).append(self._trace(rerank_result))
 
         state["retrieved_documents"] = documents
         state["sources"] = self._format_sources(state["retrieved_documents"])
@@ -364,7 +377,9 @@ class AgentService:
             return state
         result = await self.tools.cache_store(
             project=state["project"],
-            query=state.get("search_query") or state["message"],
+            # Key on the raw message so store and lookup (which uses the raw message
+            # too) stay consistent — otherwise a rewritten query is stored but never found.
+            query=state["message"],
             answer=state.get("answer") or "",
             sources=state.get("sources") or [],
         )
