@@ -109,6 +109,10 @@ class AgentState(TypedDict, total=False):
     answer: str
     sources: list[dict[str, Any]]
     tool_trace: list[dict[str, str]]
+    # Answer-cache channels: cache_hit short-circuits retrieve/answer; only a
+    # genuine generated answer (answer_cacheable) is written back to the cache.
+    cache_hit: bool
+    answer_cacheable: bool
 
 
 class AgentService:
@@ -118,11 +122,15 @@ class AgentService:
         default_limit: int = 5,
         rerank_enabled: bool = False,
         rerank_candidate_limit: int = 30,
+        cache_enabled: bool = False,
+        cache_threshold: float = 0.95,
     ):
         self.tools = tools
         self.default_limit = default_limit
         self.rerank_enabled = rerank_enabled
         self.rerank_candidate_limit = rerank_candidate_limit
+        self.cache_enabled = cache_enabled
+        self.cache_threshold = cache_threshold
         self.graph = self._build_graph()
 
     # Root span for the whole request: the traced steps below (condense_query,
@@ -148,10 +156,13 @@ class AgentService:
             result = await self.graph.ainvoke(state)
             return self._public_result(result)
 
+        # Linear flow; each node self-guards (skips its work when not applicable),
+        # so smalltalk, cache hits, and cache misses all share one straight path.
         state = await self._classify_intent(state)
-        if state["needs_rag"]:
-            state = await self._retrieve(state)
+        state = await self._cache_lookup(state)
+        state = await self._retrieve(state)
         state = await self._answer(state)
+        state = await self._cache_store(state)
         state = await self._finalize(state)
         return self._public_result(state)
 
@@ -160,17 +171,17 @@ class AgentService:
             return None
         graph = StateGraph(AgentState)
         graph.add_node("classify_intent", self._classify_intent)
+        graph.add_node("cache_lookup", self._cache_lookup)
         graph.add_node("retrieve", self._retrieve)
         graph.add_node("answer", self._answer)
+        graph.add_node("cache_store", self._cache_store)
         graph.add_node("finalize", self._finalize)
         graph.set_entry_point("classify_intent")
-        graph.add_conditional_edges(
-            "classify_intent",
-            lambda state: "retrieve" if state.get("needs_rag") else "answer",
-            {"retrieve": "retrieve", "answer": "answer"},
-        )
+        graph.add_edge("classify_intent", "cache_lookup")
+        graph.add_edge("cache_lookup", "retrieve")
         graph.add_edge("retrieve", "answer")
-        graph.add_edge("answer", "finalize")
+        graph.add_edge("answer", "cache_store")
+        graph.add_edge("cache_store", "finalize")
         graph.add_edge("finalize", END)
         return graph.compile()
 
@@ -188,7 +199,28 @@ class AgentService:
         )
         return state
 
+    async def _cache_lookup(self, state: AgentState) -> AgentState:
+        # Only RAG questions are cacheable; smalltalk is answered directly.
+        if not self.cache_enabled or not state.get("needs_rag"):
+            return state
+        result = await self.tools.cache_lookup(
+            project=state["project"],
+            query=state["message"],
+            threshold=self.cache_threshold,
+        )
+        state.setdefault("tool_trace", []).append(self._trace(result))
+        if result.status == "hit" and result.data is not None:
+            cached = result.data
+            metadata = cached.meta_data or {}
+            state["answer"] = metadata.get("answer") or ""
+            state["sources"] = metadata.get("sources") or []
+            state["cache_hit"] = True
+        return state
+
     async def _retrieve(self, state: AgentState) -> AgentState:
+        # Skip retrieval for smalltalk and for answered-from-cache turns.
+        if not state.get("needs_rag") or state.get("cache_hit"):
+            return state
         query = state["message"]
         if state.get("history"):
             rewrite = await self.tools.rewrite_query(query=query, history=state["history"])
@@ -222,6 +254,10 @@ class AgentService:
         return state
 
     async def _answer(self, state: AgentState) -> AgentState:
+        # Answer already resolved from cache — nothing to generate.
+        if state.get("cache_hit"):
+            return state
+
         if not state.get("needs_rag"):
             replies = _SMALLTALK_REPLIES.get(state.get("lang"), _SMALLTALK_REPLIES["en"])
             state["answer"] = replies.get(state.get("smalltalk_kind"), replies["greeting"])
@@ -241,6 +277,26 @@ class AgentService:
         )
         state.setdefault("tool_trace", []).append(self._trace(result))
         state["answer"] = result.data or "I could not generate an answer from the retrieved project context."
+        # Only a genuinely generated answer is worth caching.
+        state["answer_cacheable"] = result.status == "success" and bool(result.data)
+        return state
+
+    async def _cache_store(self, state: AgentState) -> AgentState:
+        # Cache only fresh, genuine RAG answers (not smalltalk, cache hits, or fallbacks).
+        if (
+            not self.cache_enabled
+            or not state.get("needs_rag")
+            or state.get("cache_hit")
+            or not state.get("answer_cacheable")
+        ):
+            return state
+        result = await self.tools.cache_store(
+            project=state["project"],
+            query=state.get("search_query") or state["message"],
+            answer=state.get("answer") or "",
+            sources=state.get("sources") or [],
+        )
+        state.setdefault("tool_trace", []).append(self._trace(result))
         return state
 
     async def _finalize(self, state: AgentState) -> AgentState:
@@ -274,4 +330,5 @@ class AgentService:
             "answer": state.get("answer") or "",
             "sources": state.get("sources") or [],
             "tool_trace": state.get("tool_trace") or [],
+            "cache_hit": bool(state.get("cache_hit")),
         }
