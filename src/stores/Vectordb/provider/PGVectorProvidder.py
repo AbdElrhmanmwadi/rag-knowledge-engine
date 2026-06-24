@@ -202,6 +202,62 @@ class PGVectorDBProvider(VectorDBInterface):
                 await session.commit()
 
         return True
+
+    async def create_cache_collection(self, collection_name: str,
+                                            embedding_size: int,
+                                            do_reset: bool = False):
+        """Create a standalone vector table for the semantic answer cache.
+
+        Unlike create_collection, this table has NO chunk_id foreign key: cache
+        entries are (question -> answer) pairs, not document chunks, so they must
+        not be tied to the chunks table.
+        """
+        if do_reset:
+            await self.delete_collection(collection_name=collection_name)
+
+        is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
+        if is_collection_existed:
+            return False
+
+        self.logger.info(f"Creating cache collection: {collection_name}")
+        async with self.db_client() as session:
+            async with session.begin():
+                create_sql = sql_text(
+                    f'CREATE TABLE {collection_name} ('
+                        f'{PgVectorTableSchemeEnums.ID.value} bigserial PRIMARY KEY,'
+                        f'{PgVectorTableSchemeEnums.TEXT.value} text, '
+                        f'{PgVectorTableSchemeEnums.VECTOR.value} vector({embedding_size}), '
+                        f'{PgVectorTableSchemeEnums.METADATA.value} jsonb DEFAULT \'{{}}\''
+                    ')'
+                )
+                await session.execute(create_sql)
+        return True
+
+    async def cache_insert(self, collection_name: str, text: str, vector: list,
+                                 metadata: dict = None):
+        """Insert one (question -> answer) cache entry. No chunk_id required."""
+        is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
+        if not is_collection_existed:
+            self.logger.error(f"Can not insert cache record to non-existed collection: {collection_name}")
+            return False
+
+        metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata is not None else "{}"
+        async with self.db_client() as session:
+            async with session.begin():
+                insert_sql = sql_text(
+                    f'INSERT INTO {collection_name} '
+                    f'({PgVectorTableSchemeEnums.TEXT.value}, '
+                    f'{PgVectorTableSchemeEnums.VECTOR.value}, '
+                    f'{PgVectorTableSchemeEnums.METADATA.value}) '
+                    f'VALUES (:text, :vector, :metadata)'
+                )
+                await session.execute(insert_sql, {
+                    'text': text,
+                    'vector': "[" + ",".join([str(v) for v in vector]) + "]",
+                    'metadata': metadata_json,
+                })
+        return True
+
     async def insert_many(self, collection_name: str, texts: list,
                          vectors: list, metadata: list = None,
                          record_ids: list = None, batch_size: int = 50):

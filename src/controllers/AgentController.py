@@ -25,6 +25,8 @@ class AgentController:
         max_history_messages: int = 10,
         rerank_enabled: bool = False,
         rerank_candidate_limit: int = 30,
+        cache_enabled: bool = False,
+        cache_threshold: float = 0.95,
     ):
         nlp_controller = NLPController(
             embedding_client=embedding_client,
@@ -41,6 +43,8 @@ class AgentController:
             default_limit=default_limit,
             rerank_enabled=rerank_enabled,
             rerank_candidate_limit=rerank_candidate_limit,
+            cache_enabled=cache_enabled,
+            cache_threshold=cache_threshold,
         )
 
     async def _prepare_session(

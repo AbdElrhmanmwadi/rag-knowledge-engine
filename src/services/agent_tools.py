@@ -71,6 +71,37 @@ class AgentTools:
             data=documents,
         )
 
+    async def cache_lookup(self, project: Project, query: str, threshold: float) -> AgentToolResult:
+        hit = await self.nlp_controller.cache_lookup(
+            project=project, query=query, threshold=threshold
+        )
+        if hit is None:
+            return AgentToolResult(
+                name="cache_lookup",
+                status="miss",
+                summary="No semantically similar cached answer",
+                data=None,
+            )
+        return AgentToolResult(
+            name="cache_lookup",
+            status="hit",
+            summary=f"Cache hit (score={hit.score:.3f})",
+            data=hit,
+        )
+
+    async def cache_store(
+        self, project: Project, query: str, answer: str, sources: list
+    ) -> AgentToolResult:
+        stored = await self.nlp_controller.cache_store(
+            project=project, query=query, answer=answer, sources=sources
+        )
+        return AgentToolResult(
+            name="cache_store",
+            status="success" if stored else "skipped",
+            summary="Stored answer in cache" if stored else "Answer not cached",
+            data=bool(stored),
+        )
+
     async def rerank(self, query: str, documents: list, top_n: int) -> AgentToolResult:
         reordered = await self.nlp_controller.rerank_documents(
             query=query,

@@ -94,6 +94,14 @@ class Settings(BaseSettings):
     RERANK_CANDIDATE_LIMIT: int = 30
 
     # =========================
+    # Semantic answer cache (optional)
+    # When enabled, a question semantically similar (>= threshold) to a previously
+    # answered one returns the stored answer instantly, skipping retrieval + generation.
+    # =========================
+    ANSWER_CACHE_ENABLED: bool = False
+    ANSWER_CACHE_SIMILARITY_THRESHOLD: float = 0.95
+
+    # =========================
     # Observability (LangSmith)
     # Accept both the modern LANGSMITH_* and the legacy LANGCHAIN_* env names.
     # =========================
