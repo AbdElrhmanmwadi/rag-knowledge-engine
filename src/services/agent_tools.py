@@ -56,11 +56,14 @@ class AgentTools:
             data=standalone,
         )
 
-    async def rag_search(self, project: Project, query: str, limit: int) -> AgentToolResult:
+    async def rag_search(
+        self, project: Project, query: str, limit: int, query_vector=None
+    ) -> AgentToolResult:
         documents = await self.nlp_controller.search_in_vectordb(
             project=project,
             text=query,
             limit=limit,
+            query_vector=query_vector,
         )
         if documents is False or documents is None:
             documents = []
@@ -72,21 +75,20 @@ class AgentTools:
         )
 
     async def cache_lookup(self, project: Project, query: str, threshold: float) -> AgentToolResult:
-        hit = await self.nlp_controller.cache_lookup(
+        hit, query_vector = await self.nlp_controller.cache_lookup(
             project=project, query=query, threshold=threshold
         )
-        if hit is None:
-            return AgentToolResult(
-                name="cache_lookup",
-                status="miss",
-                summary="No semantically similar cached answer",
-                data=None,
-            )
+        # data carries the query embedding so the caller can reuse it for retrieval
+        # on a miss (avoids a second embedding call).
         return AgentToolResult(
             name="cache_lookup",
-            status="hit",
-            summary=f"Cache hit (score={hit.score:.3f})",
-            data=hit,
+            status="hit" if hit is not None else "miss",
+            summary=(
+                f"Cache hit (score={hit.score:.3f})"
+                if hit is not None
+                else "No semantically similar cached answer"
+            ),
+            data={"hit": hit, "query_vector": query_vector},
         )
 
     async def cache_store(
@@ -100,20 +102,6 @@ class AgentTools:
             status="success" if stored else "skipped",
             summary="Stored answer in cache" if stored else "Answer not cached",
             data=bool(stored),
-        )
-
-    async def rerank(self, query: str, documents: list, top_n: int) -> AgentToolResult:
-        reordered = await self.nlp_controller.rerank_documents(
-            query=query,
-            documents=documents,
-            top_n=top_n,
-        )
-        reordered = reordered or []
-        return AgentToolResult(
-            name="rerank",
-            status="success",
-            summary=f"Reranked {len(documents)} chunk(s) down to {len(reordered)}",
-            data=reordered,
         )
 
     async def rag_answer(
