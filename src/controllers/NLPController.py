@@ -115,6 +115,63 @@ class NLPController(BaseController):
             if search_results is None:
                 return False
             return search_results
+    def create_cache_collection_name(self, project_id: str):
+        return f"cache_{self.embedding_client.embedding_size}_{project_id}".strip()
+
+    def _embed_query(self, query: str):
+        """Embed a query string, returning a single vector or None on failure."""
+        vectors = self.embedding_client.embed_text(
+            text=query, document_type=DocumentTypeEnum.QUERY.value
+        )
+        if not vectors or len(vectors) == 0:
+            return None
+        return vectors[0]
+
+    @traceable(run_type="retriever", name="cache_lookup")
+    async def cache_lookup(self, project: Project, query: str, threshold: float):
+        """Return a cached RetrievedDocument when a semantically similar question
+        was answered before (score >= threshold), else None.
+
+        Degrades to None when the vector backend does not support caching, so the
+        normal RAG path always runs as a fallback.
+        """
+        if not hasattr(self.vectordb_client, "cache_insert"):
+            logger.warning("Vector backend does not support answer caching; skipping lookup")
+            return None
+        cache_name = self.create_cache_collection_name(project_id=project.project_id)
+        if not await self.vectordb_client.is_collection_existed(collection_name=cache_name):
+            return None
+        query_vector = self._embed_query(query)
+        if query_vector is None:
+            return None
+        results = await self.vectordb_client.search_by_vector(
+            collection_name=cache_name, vector=query_vector, limit=1
+        )
+        if results and results[0].score >= threshold:
+            return results[0]
+        return None
+
+    @traceable(run_type="chain", name="cache_store")
+    async def cache_store(self, project: Project, query: str, answer: str, sources: list):
+        """Persist a (question -> answer) pair into the project's answer cache."""
+        if not hasattr(self.vectordb_client, "cache_insert"):
+            return False
+        query_vector = self._embed_query(query)
+        if query_vector is None:
+            return False
+        cache_name = self.create_cache_collection_name(project_id=project.project_id)
+        await self.vectordb_client.create_cache_collection(
+            collection_name=cache_name,
+            embedding_size=self.embedding_client.embedding_size,
+            do_reset=False,
+        )
+        return await self.vectordb_client.cache_insert(
+            collection_name=cache_name,
+            text=query,
+            vector=query_vector,
+            metadata={"answer": answer, "sources": sources or []},
+        )
+
     @traceable(run_type="chain", name="rerank")
     async def rerank_documents(self, query: str, documents: list, top_n: int):
         """Reorder retrieved chunks by cross-encoder relevance, keeping the top_n.
