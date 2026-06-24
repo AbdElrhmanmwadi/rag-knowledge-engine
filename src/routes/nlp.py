@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import logging
 
 from controllers import NLPController
@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from helpers.auth_dependencies import get_current_user
 from helpers.db import get_db
+from helpers.streaming import sse
 from services.project_access import get_project_for_user
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,8 @@ nlp_router = APIRouter(
     prefix="/api/v1/nlp",
     tags=["api-v1", "nlp"],
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @nlp_router.post("/index/push/{project_id}")
@@ -181,6 +184,43 @@ async def answer_rag_question(
         generation_client=request.app.generation_client,
         template_parser=request.app.template_parser,
     )
+
+    if search_request.stream:
+        # SSE: stream the answer token-by-token. Auth/project-access already ran
+        # above, so 401/403/404 still arrive as plain JSON; only mid-generation
+        # behavior uses events. delta* then a final done (or a no-context done).
+        async def event_stream():
+            produced = False
+            try:
+                async for chunk in nlp_controller.answer_rag_question_stream(
+                    query=search_request.text, project=project, limit=search_request.limit
+                ):
+                    if chunk:
+                        produced = True
+                        yield sse("delta", {"text": chunk})
+            except Exception:
+                logger.exception("RAG answer stream failed for project_id=%s", project_id)
+                yield sse("error", {"detail": "Answer generation failed"})
+                return
+            if not produced:
+                # No documents / no answer — mirror the non-stream 400 message.
+                yield sse("done", {
+                    "answer": "",
+                    "signal": ResponseStatus.RAG_ANSWER_FAILED.value,
+                    "message": "No answer could be generated from the retrieved documents",
+                })
+            else:
+                yield sse("done", {"signal": ResponseStatus.RAG_ANSWER_SUCCESS.value})
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     rag_answer, full_prompt, chat_history = await nlp_controller.answer_rag_question(
         query=search_request.text, project=project, limit=search_request.limit

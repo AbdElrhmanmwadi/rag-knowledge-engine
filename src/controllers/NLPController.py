@@ -6,6 +6,7 @@ from models.db_schemes.minirag.scheme.project import Project
 from models.db_schemes.minirag.scheme.data_chunk import DataChunk
 from stores.LLMEnum import DocumentTypeEnum
 from helpers.observability import traceable
+from helpers.streaming import aiter_in_thread
 
 from .BaseController import BaseController
 import json
@@ -102,18 +103,24 @@ class NLPController(BaseController):
             collection_name = self.create_collection_name(project_id= project.project_id)
             vectors=self.embedding_client.embed_text(text=text,document_type=DocumentTypeEnum.QUERY.value)
             query_vector=None
-            
+
             if not vectors or len(vectors)==0:
                 return False
             if isinstance(vectors,list) and len(vectors)>0:
                 query_vector=vectors[0]
             if query_vector is None:
                 return False
+            # When reranking is on, pull a wider candidate set so the reranker has
+            # something to reorder; the final result is still trimmed back to `limit`.
+            rerank_enabled = getattr(self.app_settings, "RERANK_ENABLED", False)
+            fetch_limit = max(limit, self.app_settings.RERANK_CANDIDATE_LIMIT) if rerank_enabled else limit
             search_results=await self.vectordb_client.search_by_vector(collection_name=collection_name,
                                                                        vector=query_vector ,
-                                                                       limit=limit)
+                                                                       limit=fetch_limit)
             if search_results is None:
                 return False
+            if rerank_enabled and search_results:
+                search_results = await self._rerank_results(query=text, documents=search_results, top_n=limit)
             return search_results
     def create_cache_collection_name(self, project_id: str):
         return f"cache_{self.embedding_client.embedding_size}_{project_id}".strip()
@@ -199,6 +206,39 @@ class NLPController(BaseController):
                 reordered.append(documents[idx])
         return reordered or documents[:top_n]
 
+
+    def _rerank_client(self):
+        """First configured client that can rerank (Cohere). None if neither can."""
+        for client in (self.generation_client, self.embedding_client):
+            if hasattr(client, "rerank_documents"):
+                return client
+        return None
+
+    async def _rerank_results(self, query: str, documents: list, top_n: int) -> list:
+        """Reorder vector hits with a reranker and keep the top_n.
+
+        Any failure (no rerank-capable client, API error, empty result) falls back
+        to the original vector-search order so retrieval never returns fewer or no
+        documents because of reranking.
+        """
+        client = self._rerank_client()
+        if client is None:
+            return documents[:top_n]
+        texts = [getattr(doc, "text", "") or "" for doc in documents]
+        try:
+            ranked_indices = await asyncio.to_thread(
+                client.rerank_documents,
+                query,
+                texts,
+                self.app_settings.RERANK_MODEL_ID,
+                top_n,
+            )
+        except Exception as e:
+            logger.warning(f"Rerank failed, using vector-search order: {e}")
+            return documents[:top_n]
+        if not ranked_indices:
+            return documents[:top_n]
+        return [documents[i] for i in ranked_indices if 0 <= i < len(documents)]
     def _build_history_messages(self, history):
         """Convert a neutral [{'role','content'}] history into provider-formatted messages.
 
@@ -223,22 +263,23 @@ class NLPController(BaseController):
             )
         return messages
 
-    @traceable(run_type="chain", name="answer_rag_question")
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
-        answer = None
-        full_prompt = None
-        chat_history = None
+    async def _build_rag_prompt(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        """Build (full_prompt, chat_history) for a RAG answer, or None on failure.
+
+        Shared by the blocking and streaming answer paths so both send the model
+        byte-identical prompts.
+        """
         # Reuse documents the caller already retrieved (the agent's retrieve node searched
         # with the same query/limit); only hit the vector DB when none were supplied.
         retreved_documant = documents if documents else await self.search_in_vectordb(project=project,text=query,limit=limit)
         if not retreved_documant or len(retreved_documant)==0:
             logger.warning(f"No documents retrieved for query: {query}")
-            return answer,full_prompt,chat_history
+            return None
         logger.info(f"Retrieved {len(retreved_documant)} documents")
         system_promit=self.template_parser.get("rag","system_prompt")
         if not system_promit:
             logger.error("Failed to get system_prompt from template parser")
-            return answer,full_prompt,chat_history
+            return None
         document_prompts = []
         for idx, doc in enumerate(retreved_documant):
             doc_prompt = self.template_parser.get("rag","documant_prompt",{
@@ -250,19 +291,28 @@ class NLPController(BaseController):
                 document_prompts.append(doc_prompt)
         if not document_prompts:
             logger.error("Failed to generate document prompts")
-            return answer,full_prompt,chat_history
+            return None
         document_prompt="\n".join(document_prompts)
         footer_prompt=self.template_parser.get("rag","footer_prompt",{
             "query":query
         })
         if not footer_prompt:
             logger.error("Failed to get footer_prompt from template parser")
-            return answer,full_prompt,chat_history
+            return None
         chat_history=[
         self.generation_client.constract_prompt(prompt=system_promit,role=self.generation_client.enums.SYSTEM.value),]
         chat_history.extend(self._build_history_messages(history))
         full_prompt="\n\n".join([document_prompt, footer_prompt])
         logger.info(f"Generated full prompt with {len(document_prompts)} documents")
+        return full_prompt,chat_history
+
+    @traceable(run_type="chain", name="answer_rag_question")
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        answer = None
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        if built is None:
+            return None,None,None
+        full_prompt,chat_history = built
         try:
             answer = self.generation_client.genarate_text(
                 prompt=full_prompt,
@@ -277,4 +327,23 @@ class NLPController(BaseController):
             logger.error(f"Error generating text: {str(e)}")
             answer = None
         return answer,full_prompt,chat_history
- 
+
+    @traceable(run_type="chain", name="answer_rag_question_stream")
+    async def answer_rag_question_stream(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+        """Yield answer text chunks; yields nothing when no prompt could be built
+        (the caller falls back to its no-context message)."""
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        if built is None:
+            return
+        full_prompt,chat_history = built
+        sync_stream = self.generation_client.genarate_text_stream(
+            prompt=full_prompt,
+            chat_history=chat_history,
+            max_output_tokens=None,
+            # Same deterministic decoding as the blocking path.
+            temperature=0,
+        )
+        # The provider generator blocks on the network; iterate it on a worker
+        # thread so the event loop keeps flushing SSE events.
+        async for chunk in aiter_in_thread(sync_stream):
+            yield chunk

@@ -4,60 +4,81 @@
 
 ### Application Stack
 ```
-┌─────────────────────────────────────────────────────────┐
-│              FastAPI Application                         │
-│              (uvicorn server on :8000)                   │
-│                                                          │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Routes Layer                                      │  │
-│  │  ├─ base_router     (/api/v1)                    │  │
-│  │  ├─ data_router     (/api/v1/data)               │  │
-│  │  └─ nlp_router      (/api/v1/nlp)                │  │
-│  └───────────────────────────────────────────────────┘  │
-│                        ↓                                 │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Controllers Layer (Business Logic)                │  │
-│  │  ├─ DataController                               │  │
-│  │  ├─ ProcessController                            │  │
-│  │  ├─ NLPController                                │  │
-│  │  ├─ ProjectController                            │  │
-│  │  └─ BaseController                               │  │
-│  └───────────────────────────────────────────────────┘  │
-│                 ↙              ↓              ↖          │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
-│  │ Models Layer │  │ Stores Layer │  │ Helpers Layer │ │
-│  │              │  │              │  │               │ │
-│  │ ProjectModel │  │ LLM Providers│  │ config.py     │ │
-│  │ ChunkModel   │  │ - OpenAI     │  │               │ │
-│  │ AssetModel   │  │ - Cohere     │  │ get_settings()│ │
-│  │              │  │              │  │               │ │
-│  │ DB Schemes   │  │ VectorDB     │  └───────────────┘ │
-│  │ - Project    │  │ - Qdrant     │                    │
-│  │ - DataChunk  │  │ - Provider   │                    │
-│  │ - Asset      │  │ - Factory    │                    │
-│  └──────────────┘  └──────────────┘                    │
-│         ↓                 ↙            ↖                │
-└─────────────┼──────────────────────────┼─────────────┘
-              ↓                          ↓
-    ┌──────────────────────┐  ┌──────────────────────┐
-    │  PostgreSQL          │  │  Qdrant VectorDB     │
-    │  + pgvector          │  │  (Local on disk)     │
-    │                      │  │                      │
-    │  Tables:             │  │  Collections:        │
-    │  - projects          │  │  - collection_N      │
-    │  - chunks            │  │  - points/vectors    │
-    │  - assets            │  │  - metadata payload  │
-    │                      │  │                      │
-    │  Indexes:            │  │  Distance: Cosine    │
-    │  - project_id        │  │  Embedding: 384-dim  │
-    │  - asset_id          │  │                      │
-    └──────────────────────┘  └──────────────────────┘
-             ↑                           ↑
-             └────────────┬──────────────┘
-                          │
-              Docker Compose Services
-              (mongo:7, pgvector:0.8.2)
+┌───────────────────────────────────────────────────────────────┐
+│              FastAPI Application (uvicorn :8000)                │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Routes Layer                                              │ │
+│  │  ├─ base_router        (/api/v1)                          │ │
+│  │  ├─ auth_router        (/auth)                            │ │
+│  │  ├─ data_router        (/api/v1/data)                     │ │
+│  │  ├─ nlp_router         (/api/v1/nlp)                      │ │
+│  │  ├─ agent_router       (/api/v1/agent)   ← chat + SSE     │ │
+│  │  ├─ translation_router (/translate)                       │ │
+│  │  └─ voice_router       (/api/v1/voice)                    │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                        ↓                                       │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Controllers Layer (Business Logic)                        │ │
+│  │  AuthController · DataController · ProcessController        │ │
+│  │  NLPController · ProjectController · AgentController        │ │
+│  │  TranslationController · VoiceController · BaseController   │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                        ↓                                       │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Services Layer                                            │ │
+│  │  ├─ agent_service  (LangGraph nodes: classify→retrieve→    │ │
+│  │  │                  answer→finalize; + run_stream for SSE) │ │
+│  │  ├─ agent_tools    (rewrite_query, rag_search, rag_answer) │ │
+│  │  └─ project_access (per-user project/job authorization)    │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│            ↙                  ↓                   ↖             │
+│  ┌──────────────┐  ┌────────────────────┐  ┌────────────────┐ │
+│  │ Models Layer │  │   Stores Layer     │  │  Helpers Layer │ │
+│  │              │  │                    │  │                │ │
+│  │ Project      │  │ LLM Providers      │  │ config.py      │ │
+│  │ Asset        │  │  - Cohere/OpenAI   │  │ jwt.py         │ │
+│  │ DataChunk    │  │ Embedding (same)   │  │ security.py    │ │
+│  │ User         │  │ VectorDB           │  │ email.py       │ │
+│  │ RefreshToken │  │  - PGVector (def.) │  │ google_auth.py │ │
+│  │ AgentSession │  │  - Qdrant          │  │ auth_deps.py   │ │
+│  │ AgentMessage │  │ Voice (Whisper/    │  │ observability  │ │
+│  │ TranslationJob│ │   Piper)           │  │ streaming.py   │ │
+│  │              │  │ Translation        │  │                │ │
+│  │              │  │  - LibreTranslate  │  │                │ │
+│  └──────────────┘  └────────────────────┘  └────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
+              ↓                          ↓                  ↓
+    ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────┐
+    │  PostgreSQL          │  │  Vector store    │  │ LibreTranslate│
+    │  + pgvector          │  │  (PGVector in    │  │  (Docker,     │
+    │                      │  │   the same PG, or│  │   ar+en)      │
+    │  Tables:             │  │   Qdrant on disk)│  │               │
+    │  projects, assets,   │  │  collection_N    │  │ Whisper/Piper │
+    │  chunks, users,      │  │  vectors+payload │  │  run in-proc  │
+    │  refresh_tokens,     │  │  384-dim         │  │  (subprocess) │
+    │  agent_sessions,     │  │  distance: DOT/  │  └──────────────┘
+    │  agent_messages,     │  │  cosine          │
+    │  translation_jobs    │  └──────────────────┘
+    └──────────────────────┘
 ```
+
+> Note: `docker/docker-compose.yml` also defines a `mongodb` service, but the
+> application code does not use MongoDB — all relational state is in PostgreSQL.
+
+---
+
+## Authentication & Authorization
+
+- JWT access tokens + DB-backed refresh tokens (`helpers/jwt.py`, `RefreshToken`).
+- Local email/password (`helpers/security.py` for hashing) and Google sign-in
+  (`helpers/google_auth.py`), tracked by `users.auth_provider`.
+- Email verification and single-use password reset tokens (the reset token embeds
+  a fingerprint of the current password hash, so using it — or changing the
+  password — invalidates it; see `helpers/jwt.py`).
+- `helpers/auth_dependencies.get_current_user` guards feature endpoints;
+  `services/project_access` enforces that a user owns the project/job they act on
+  (`projects.owner_id`).
 
 ---
 
@@ -65,172 +86,94 @@
 
 ### 1. File Upload Flow
 ```
-POST /api/v1/data/upload/123 + file.txt
-    ↓
-    Request → FastAPI → data_router → upload_data()
-    ↓
-    DataController.validate_uploaded_file()
-        - Check MIME type: "text/plain" ✓
-        - Check size: ≤ 10MB ✓
-        - Return (True, "validated")
-    ↓
-    ProjectModel.get_project_or_create("123")
-        - Query: SELECT * FROM projects WHERE project_id=123
-        - If not exists: INSERT INTO projects (project_id=123)
-        - Return Project object
-    ↓
-    DataController.generate_unique_file_Path()
-        - Generate: "abc123def456_file.txt"
-        - Path: assets/files/123/abc123def456_file.txt
-    ↓
-    Async file write to disk
-        - Stream file chunks from upload
-        - Write to filesystem
-    ↓
-    AssetModel.create_asset()
-        - INSERT INTO assets:
-            * asset_name: "abc123def456_file.txt"
-            * asset_type: "FILE"
-            * asset_size: bytes
-            * asset_project_id: 123
-    ↓
-    Response:
-    {
-        "signal": "file_upload_success",
-        "file_id": "abc123def456_file.txt"
-    }
+POST /api/v1/data/upload/{project_id} + file   (auth required)
+    → validate_uploaded_file (type whitelist, size ≤ FILE_MAX_SIZE)
+    → get_project_for_user (owns project)
+    → stream file to assets/files/{project_id}/<unique>_name
+    → AssetModel.create_asset (asset_type=FILE)
+    → { "signal": "success", "file_id": "<unique>_name" }
 ```
 
 ### 2. File Processing Flow
 ```
-POST /api/v1/data/process/123 + {"chunk_size": 100, "overlap_size": 20}
-    ↓
-    ProjectModel.get_project_or_create("123")
-    ↓
-    Get all assets for project 123:
-        SELECT * FROM assets WHERE asset_project_id=123
-    ↓
-    For each asset/file:
-        ↓
-        ProcessController.get_file_content(file_id)
-            ├─ Determine file extension
-            ├─ If .txt: TextLoader(file_path)
-            ├─ If .pdf: TextLoader(file_path) ❌ WRONG! Should be PyMuPDFLoader
-            └─ loader.load() → returns Document objects
-        ↓
-        ProcessController.process_file_content()
-            ├─ Extract text from Document objects
-            ├─ Create RecursiveCharacterTextSplitter
-            ├─ Split with chunk_size=100, overlap=20
-            └─ Returns list of Document chunks
-        ↓
-        For each chunk:
-            CREATE DataChunk(
-                chunk_text: chunk.page_content,
-                chunk_metadata: chunk.metadata,
-                chunk_order: position,
-                chunk_project_id: 123,
-                chunk_asset_id: asset_id
-            )
-        ↓
-        ChunkModel.insert_many_chunks()
-            └─ INSERT multiple chunks into chunks table
-    ↓
-    Response:
-    {
-        "signal": "file_process_success",
-        "inserted_chunks": 250,
-        "processed_files": 1
-    }
+POST /api/v1/data/process/{project_id} + {chunk_size, overlap_size, do_reset}
+    → load each asset (txt / pdf / markdown — markdown is split per Q&A section)
+    → RecursiveCharacterTextSplitter → Document chunks
+    → ChunkModel.insert_many_chunks (DataChunk rows)
+    → { "signal": "success", "inserted_chunks": N, "processed_files": M }
 ```
 
 ### 3. Vector Indexing Flow
 ```
-POST /api/v1/nlp/index/push/123
-    ↓
-    ChunkModel.get_chunks_by_project_id("123", page_number=1)
-        ├─ Query: SELECT * FROM chunks WHERE chunk_project_id=123
-        ├─ Limit: 10 per page
-        └─ Returns: [Chunk1, Chunk2, ..., Chunk10]
-    ↓
-    NLPController.index_into_vectordb()
-        ├─ Extract texts: [chunk.chunk_text for chunk in chunks]
-        ├─ Extract metadata: [chunk.chunk_metadata for chunk in chunks]
-        ↓
-        For each text:
-            ├─ embedding_client.embed_text(text)
-            │   ├─ Call Cohere API: embed-multilingual-light-v3.0
-            │   └─ Returns: vector [384-dimensional]
-            ↓
-            Create vectors = [vector1, vector2, ...]
-        ↓
-        QdrantDBProvider.create_collection(
-            collection_name="collection_123",
-            embedding_size=384,
-            distance="cosine",
-            do_reset=True (on first page)
-        )
-        ↓
-        QdrantDBProvider.insert_many()
-            ├─ Batch records into groups of 50
-            ├─ For each batch:
-            │   ├─ Create Record objects with:
-            │   │  ├─ id: UUID
-            │   │  ├─ vector: [384-dim embedding]
-            │   │  └─ payload: {text, metadata}
-            │   │
-            │   └─ client.upload_records(collection_name, records)
-            │       └─ Qdrant stores points in collection
-            ↓
-        Continue with page 2, 3, ... until no more chunks
-    ↓
-    Response:
-    {
-        "signal": "insert_into_vectordb_success"
-    }
+POST /api/v1/nlp/index/push/{project_id} + {do_reset}
+    → page through chunks for the project
+    → embedding_client.embed_text(texts)  (Cohere embed-multilingual-light-v3.0 → 384-dim)
+    → vectordb_client.create_collection(collection_{size}_{project_id}, do_reset on first page)
+    → vectordb_client.insert_many(texts, vectors, metadata, record_ids)  (batched)
+    → { "signal": "insert_into_vectordb_success" }
 ```
 
-### 4. Missing: Query & Answer Generation Flow
-```
-❌ NOT IMPLEMENTED
+### 4. Retrieval & Answer Generation Flow  ✅ implemented
+Two entry points share the same retrieval + generation core:
 
-Expected flow:
-POST /api/v1/rag/query
-    Body: {"project_id": 123, "query": "What is the strategy?"}
+```
+Direct RAG:   POST /api/v1/nlp/index/answer/{project_id} + {text, limit}
+Agent chat:   POST /api/v1/agent/chat/{project_id} + {message, session_id?, stream?}
     ↓
-    Embed query:
-        embedding_client.embed_text(query)
-        → vector [384-dim]
+    (agent only) classify_intent — smalltalk shortcut vs. RAG, language detect
     ↓
-    Search Qdrant:
-        QdrantDBProvider.search_by_vector(
-            collection_name="collection_123",
-            vector=query_vector,
-            limit=5
-        )
-        → Returns top-5 most similar chunks with scores
+    embed query → vectordb.search_by_vector(collection, query_vector, limit)
+    ↓                                   → top-K chunks + similarity scores
+    (optional) Cohere rerank — when RERANK_ENABLED, fetch RERANK_CANDIDATE_LIMIT
+        candidates, reorder by cross-encoder relevance, keep the top `limit`;
+        falls back to vector order on any rerank failure
     ↓
-    Retrieve contexts:
-        contexts = [result.text for result in results]
+    build prompt from retrieved chunks (system + documents + footer template,
+        temperature=0 for deterministic, non-echoing answers)
     ↓
-    Format prompt:
-        prompt = f"""
-        Context:
-        {contexts}
-        
-        Question: {query}
-        """
+    generation_client.generate_text(...)   (Cohere / OpenAI)
     ↓
-    Generate answer:
-        generation_client.generate_text(prompt)
-        → Calls Cohere or OpenAI API
-        → Returns answer text
-    ↓
-    Response:
-    {
-        "answer": "...",
-        "sources": [results with citations]
-    }
+    Response: { answer, sources[], tool_trace[] }
+```
+
+### 5. Agent Streaming Flow (SSE)
+```
+POST /api/v1/agent/chat/{project_id} + {"stream": true}
+    → AgentController.chat_stream  (persists the user message up front)
+    → AgentService.run_stream  (bypasses the LangGraph graph, reuses node methods)
+        emits:  meta  {session_id, sources, tool_trace}   (after retrieval)
+                delta {text}   × N                          (token chunks via
+                                                             provider .generate_text_stream,
+                                                             iterated off-thread)
+                done  {answer, signal}                      (full text)
+                error {detail}                              (on mid-stream failure)
+    → assistant message persisted once, after the stream completes
+       (a client disconnect persists nothing partial)
+```
+Providers stream via Cohere `chat_stream` / OpenAI `stream=True`; usage metadata
+is captured from the final stream event so LangSmith token accounting still works.
+
+### 6. Voice Flow
+```
+POST /api/v1/voice/stt    audio → faster-whisper → transcript     (auth)
+POST /api/v1/voice/tts    text  → piper → audio/wav               (auth)
+POST /api/v1/voice/chat/{project_id}
+    audio → STT (whisper) → RAG answer → TTS (piper) → answer text + audio
+    - upload validated (extension whitelist, size cap)
+    - TTS voice chosen by the answer's language (ar → Arabic model, else default)
+    - ffmpeg converts non-wav uploads to 16k mono wav for Whisper
+```
+
+### 7. Translation Flow (async job)
+```
+POST /translate/file + {project_id, file_id, source_lang?, target_lang?}
+    → create TranslationJob (status=pending) → 202 {job_id}
+    → BackgroundTask: read source asset bytes
+        → LibreTranslateProvider.translate_file (multipart; api_key is a FORM field)
+        → poll/download translatedFileUrl → save as TRANSLATED_FILE asset
+        → job status → completed (or failed with error_message)
+GET  /translate/status/{job_id}    → poll until completed/failed
+GET  /translate/download/{job_id}  → FileResponse of the translated file
 ```
 
 ---
@@ -240,340 +183,256 @@ POST /api/v1/rag/query
 ### Table: projects
 ```sql
 CREATE TABLE projects (
-    project_id          INT PRIMARY KEY,
-    project_uuid        UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP
+    project_id    INT PRIMARY KEY,
+    project_uuid  UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    owner_id      INT REFERENCES users(id),        -- added: per-user ownership
+    created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP
 );
 ```
-
-**Purpose**: Track knowledge bases/projects  
-**Relationships**: 1-to-many with chunks, 1-to-many with assets
-
-### Table: chunks
-```sql
-CREATE TABLE chunks (
-    chunk_id            INT PRIMARY KEY AUTOINCREMENT,
-    chunk_uuid          UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
-    chunk_text          VARCHAR NOT NULL,
-    chunk_metadata      JSONB,
-    chunk_order         INT NOT NULL,
-    chunk_project_id    INT NOT NULL REFERENCES projects(project_id),
-    chunk_asset_id      INT NOT NULL REFERENCES assets(asset_id),
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP
-);
-
-INDEX ix_chunk_project_id ON chunks(chunk_project_id);
-INDEX ix_chunk_asset_id ON chunks(chunk_asset_id);
-```
-
-**Purpose**: Store document chunks  
-**Example chunk_metadata**:
-```json
-{
-    "source": "abc123_strategy.txt",
-    "page": 1,
-    "section": "Introduction",
-    "line_start": 0,
-    "line_end": 50
-}
-```
+**Relationships**: 1-to-many with chunks, assets, agent_sessions; many-to-1 with users (owner).
 
 ### Table: assets
 ```sql
 CREATE TABLE assets (
-    asset_id            INT PRIMARY KEY AUTOINCREMENT,
-    asset_uuid          UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
-    asset_type          VARCHAR NOT NULL,
-    asset_name          VARCHAR NOT NULL,
-    asset_size          INT NOT NULL,
-    asset_config        JSONB,
-    asset_project_id    INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
+    asset_id          INT PRIMARY KEY,
+    asset_uuid        UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    asset_type        VARCHAR NOT NULL,            -- "FILE" | "TRANSLATED_FILE"
+    asset_name        VARCHAR NOT NULL,
+    asset_size        INT NOT NULL,
+    asset_config      JSONB,
+    asset_project_id  INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-INDEX ix_asset_project_id ON assets(asset_project_id);
-INDEX ix_asset_type ON assets(asset_type);
+INDEX ix_asset_project_id, ix_asset_type;
 ```
 
-**Purpose**: Track uploaded files  
-**asset_type values**: "FILE"  
-**Example**:
-```json
-{
-    "asset_id": 42,
-    "asset_type": "FILE",
-    "asset_name": "abc123def456_strategy.txt",
-    "asset_size": 15420,
-    "asset_project_id": 123
-}
+### Table: chunks
+```sql
+CREATE TABLE chunks (
+    chunk_id          INT PRIMARY KEY,
+    chunk_uuid        UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    chunk_text        VARCHAR NOT NULL,
+    chunk_metadata    JSONB,                       -- JSONB (migrated from JSON)
+    chunk_order       INT NOT NULL,
+    chunk_project_id  INT NOT NULL REFERENCES projects(project_id),
+    chunk_asset_id    INT NOT NULL REFERENCES assets(asset_id),
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP
+);
+INDEX ix_chunk_project_id, ix_chunk_asset_id;
 ```
+
+### Table: users
+```sql
+CREATE TABLE users (
+    id              INT PRIMARY KEY,
+    email           VARCHAR UNIQUE NOT NULL,
+    username        VARCHAR UNIQUE NOT NULL,
+    hashed_password VARCHAR,                        -- NULL for Google-only accounts
+    google_id       VARCHAR UNIQUE,                 -- added with Google sign-in
+    auth_provider   VARCHAR,                        -- "local" | "google" | "both"
+    is_verified     BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP
+);
+```
+
+### Table: refresh_tokens
+```sql
+CREATE TABLE refresh_tokens (
+    id          INT PRIMARY KEY,
+    token       VARCHAR UNIQUE NOT NULL,
+    user_id     INT NOT NULL REFERENCES users(id),
+    expires_at  TIMESTAMP NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+A password reset deletes all of a user's refresh tokens (forces re-login).
+
+### Table: agent_sessions
+```sql
+CREATE TABLE agent_sessions (
+    session_id  INT PRIMARY KEY,
+    project_id  INT NOT NULL REFERENCES projects(project_id),
+    user_id     INT NOT NULL REFERENCES users(id),
+    title       VARCHAR,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP
+);
+```
+
+### Table: agent_messages
+```sql
+CREATE TABLE agent_messages (
+    message_id        INT PRIMARY KEY,
+    session_id        INT NOT NULL REFERENCES agent_sessions(session_id),
+    role              VARCHAR NOT NULL,             -- "user" | "assistant"
+    content           TEXT NOT NULL,
+    message_metadata  JSONB,                        -- {sources, tool_trace}
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### Table: translation_jobs
+```sql
+CREATE TABLE translation_jobs (
+    job_id           INT PRIMARY KEY,
+    project_id       INT NOT NULL REFERENCES projects(project_id),
+    asset_id         INT NOT NULL REFERENCES assets(asset_id),   -- source file
+    source_lang      VARCHAR,                       -- "auto" or a code
+    target_lang      VARCHAR,
+    status           VARCHAR,                       -- pending|processing|completed|failed
+    result_asset_id  INT REFERENCES assets(asset_id),            -- translated file
+    error_message    TEXT,
+    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMP
+);
+```
+
+Migrations live in `src/models/db_schemes/minirag/alembic/versions/`; apply with
+`alembic upgrade head` (see README). Tables are **not** auto-created on startup.
 
 ---
 
-## Vector Database Schema
+## Vector Database
 
-### Qdrant Collection: collection_{project_id}
+The vector store is pluggable via `VECTOR_DB_BACKEND` (`VectorDBProviderFactory`):
+
+- **PGVECTOR** (default) — vectors live in the same PostgreSQL via the `pgvector`
+  extension. Simplest to operate; one datastore.
+- **QDRANT** — local on-disk Qdrant at `assets/database/`.
+
+Collection name: `collection_{embedding_size}_{project_id}` (e.g.
+`collection_384_1000`). Each record stores the chunk text, the embedding vector,
+and metadata payload.
 
 ```
-Collection: collection_123
-
-Points: [
-    {
-        id: "550e8400-e29b-41d4-a716-446655440001",
-        vector: [0.123, 0.456, ..., -0.789],  // 384 dimensions
-        payload: {
-            "text": "This is the strategy overview...",
-            "metadata": {
-                "source": "abc123_strategy.txt",
-                "chunk_order": 1,
-                "asset_id": 42
-            }
-        }
-    },
-    {
-        id: "550e8400-e29b-41d4-a716-446655440002",
-        vector: [0.234, 0.567, ..., -0.890],
-        payload: {
-            "text": "Implementation details of the strategy...",
-            "metadata": {
-                "source": "abc123_strategy.txt",
-                "chunk_order": 2,
-                "asset_id": 42
-            }
-        }
-    },
-    // ... more points
-]
-
 Config:
-{
-    distance_method: "cosine",  // or "dot"
-    embedding_size: 384,         // for embed-multilingual-light-v3.0
-    indexing_threshold: 0        // disable auto-indexing until optimization
-}
+  distance_method: DOT (configurable to cosine via VECTOR_DB_DISTANCE_METHOD)
+  embedding_size:  384   (Cohere embed-multilingual-light-v3.0)
 ```
 
-**Vector Properties**:
-- **Dimension**: 384 (for Cohere `embed-multilingual-light-v3.0`)
-- **Distance Metric**: Cosine similarity (configurable to DOT)
-- **Storage**: Local filesystem at `assets/database/qdrant_db/`
-
-**Query Example**:
-```python
-# Search for chunks similar to user query
-results = client.search(
-    collection_name="collection_123",
-    query_vector=[...384-dim vector...],
-    limit=5
-)
-
-# Returns RetrievedDocument objects:
-# [
-#     RetrievedDocument(text="...", score=0.92),
-#     RetrievedDocument(text="...", score=0.88),
-#     ...
-# ]
-```
-
----
-
-## Data Model Classes
-
-### Pydantic Models (Request/Response)
-
-```python
-# File Upload Response
-{
-    "signal": "file_upload_success",
-    "file_id": "abc123def456_strategy.txt"
-}
-
-# File Processing Request
-{
-    "file_id": "abc123def456_strategy.txt",  # Optional
-    "chunk_size": 100,                        # Optional, default=100
-    "overlap_size": 20,                       # Optional, default=20
-    "do_reset": 0                             # Optional, default=0
-}
-
-# File Processing Response
-{
-    "signal": "file_process_success",
-    "inserted_chunks": 250,
-    "processed_files": 1
-}
-
-# NLP Index Push Request
-{
-    "do_reset": 0  # Optional, whether to reset collection
-}
-
-# NLP Index Push Response
-{
-    "signal": "insert_into_vectordb_success"
-}
-
-# NLP Collection Info Response
-{
-    "signal": "get_vectordb_collection_info_success",
-    "collection_info": {
-        "points_count": 250,
-        "config": {...}
-    }
-}
-```
-
-### SQLAlchemy ORM Models
-
-```python
-# Project ORM
-class Project(SQLAlchemyBase):
-    project_id: int
-    project_uuid: UUID
-    created_at: datetime
-    updated_at: datetime
-    chunks: Relationship  # to DataChunk
-    assets: Relationship  # to Asset
-
-# DataChunk ORM
-class DataChunk(SQLAlchemyBase):
-    chunk_id: int
-    chunk_uuid: UUID
-    chunk_text: str
-    chunk_metadata: dict  # JSONB
-    chunk_order: int
-    chunk_project_id: int  # FK
-    chunk_asset_id: int    # FK
-    created_at: datetime
-    updated_at: datetime
-    project: Relationship   # to Project
-    asset: Relationship     # to Asset
-
-# Asset ORM
-class Asset(SQLAlchemyBase):
-    asset_id: int
-    asset_uuid: UUID
-    asset_type: str  # "FILE"
-    asset_name: str  # "abc123_file.txt"
-    asset_size: int  # bytes
-    asset_config: dict  # JSONB, optional
-    asset_project_id: int  # FK
-    created_at: datetime
-    updated_at: datetime
-    project: Relationship   # to Project
-    chunks: Relationship    # to DataChunk
-```
+Search returns retrieved documents with `text`, `score`, and `meta_data`, which
+the agent formats into `sources` (file paths stripped out before returning).
 
 ---
 
 ## Configuration & Environment
 
-### Environment Variables
 ```env
 # Application
-APP_NAME=RAG Knowledge Engine
-APP_DESCRIPTION=Retrieval-Augmented Generation system
-APP_VERSION=1.0.0
+APP_NAME / APP_DESCRIPTION / APP_VERSION
+FILE_MAX_SIZE=10              # MB (enforced on data + voice uploads)
+FILE_DEFAULT_CHUNK_SIZE=512000  # bytes per streamed read
+STORAGE_ROOT=                # if set, files/db live under it (e.g. /data/rag)
 
-# File Handling
-FILE_ALLOWED_TYPES=["text/plain", "application/pdf"]
-FILE_MAX_SIZE=10  # MB
-FILE_DEFAULT_CHUNK_SIZE=512000  # ⚠️ Unclear units
+# PostgreSQL
+POSTGRES_USERNAME / POSTGRES_PASSWORD / POSTGRES_HOST / POSTGRES_PORT / POSTGRES_DB
 
-# PostgreSQL (Async)
-POSTGRES_USERNAME=postgres
-POSTGRES_PASSWORD=your_postgres_password
-POSTGRES_HOST=localhost  # ❌ Won't work in Docker
-POSTGRES_PORT=5432
-POSTGRES_DB=minirag-v1
+# Auth
+JWT_SECRET_KEY / JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES / REFRESH_TOKEN_EXPIRE_DAYS
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES=30
+FRONTEND_BASE_URL            # used to build verify/reset links in emails
+RESEND_API_KEY / RESEND_FROM_EMAIL
+GOOGLE_CLIENT_ID
 
-# LLM - Generation
-GENERATION_BACKEND=COHERE  # or OPENAI
+# LLM
+GENERATION_BACKEND=COHERE    # or OPENAI
 GENERATION_MODEL_ID=command-a-03-2025
-GENERATION_DAFAULT_MAX_TOKENS=200
-GENERATION_DAFAULT_TEMPERATURE=0.1
-OPENAI_API_KEY=...
-OPENAI_API_URL=...
-
-# LLM - Embedding
-EMBEDDING_BACKEND=COHERE  # or OPENAI
+EMBEDDING_BACKEND=COHERE
 EMBEDDING_MODEL_ID=embed-multilingual-light-v3.0
 EMBEDDING_MODEL_SIZE=384
-COHERE_API_KEY=...
-
-# Text Processing
+COHERE_API_KEY / OPENAI_API_KEY / OPENAI_API_URL
 INPUT_DAFAULT_MAX_CHARACTERS=1024
+GENERATION_DAFAULT_MAX_TOKENS / GENERATION_DAFAULT_TEMPERATURE
 
-# Vector Database
-VECTOR_DB_BACKEND=QDRANT  # Only option currently
-VECTOR_DB_PATH=qdrant_db  # ❌ Relative path
-VECTOR_DB_DISTANCE_METHOD=cosine  # or dot
+# Vector DB
+VECTOR_DB_BACKEND=PGVECTOR   # or QDRANT
+VECTOR_DB_PATH / VECTOR_DB_DISTANCE_METHOD
+
+# Reranking (optional, Cohere; off by default)
+RERANK_ENABLED=False
+RERANK_MODEL_ID=rerank-multilingual-v3.0
+RERANK_CANDIDATE_LIMIT=30     # candidates fetched before rerank; final count stays `limit`
+
+# Agent
+AGENT_DEFAULT_RETRIEVAL_LIMIT=5
+AGENT_MAX_HISTORY_MESSAGES=10
+
+# Translation
+TRANSLATION_ENGINE=LIBRETRANSLATE
+TRANSLATION_BASE_URL / TRANSLATION_FILE_ENDPOINT_URL
+TRANSLATION_API_KEY          # only for API-key-protected instances
+DEFAULT_TARGET_LANG=ar
+TRANSLATION_TIMEOUT_SECONDS / TRANSLATION_MAX_RETRIES / TRANSLATION_RETRY_BACKOFF_SECONDS
+
+# Voice — STT (faster-whisper)
+STT_BACKEND=FASTER_WHISPER
+STT_MODEL_SIZE / STT_DEVICE / STT_COMPUTE_TYPE
+STT_TIMEOUT_SECONDS / STT_WARMUP_ON_STARTUP / STT_WARMUP_TIMEOUT_SECONDS
+
+# Voice — TTS (piper)
+TTS_BACKEND=PIPER
+TTS_TIMEOUT_SECONDS=60
+PIPER_EXE_PATH / PIPER_MODEL_PATH / PIPER_MODEL_PATH_AR
+FFMPEG_PATH / FFMPEG_TIMEOUT_SECONDS
+
+# Observability (optional)
+LANGSMITH_TRACING / LANGSMITH_API_KEY / LANGSMITH_PROJECT / LANGSMITH_ENDPOINT
 ```
 
 ---
 
 ## Deployment Architecture
 
-### Current Local Setup
+### Local / Docker
 ```
-Development Machine
-├─ FastAPI Application (uvicorn)
-│  ├─ Upload files → assets/files/{project_id}/
-│  ├─ Store vectors → assets/database/qdrant_db/
-│  └─ Connect to:
-│     ├─ PostgreSQL (docker:5432)
-│     └─ Qdrant (local storage)
-│
-├─ Docker Services
-│  ├─ PostgreSQL (pgvector:0.8.2-pg18)
-│  │  ├─ Port: 5432
-│  │  └─ Volume: pgvector_data
-│  │
-│  └─ MongoDB (mongo:7) ❌ UNUSED
-│     └─ Port: 27007
-│
-└─ File Storage
-   └─ assets/
-      ├─ files/{project_id}/*.txt  (uploaded files)
-      └─ database/qdrant_db/       (vector store)
+docker/docker-compose.yml
+├─ pgvector        (PostgreSQL + pgvector)         → relational + vector store
+├─ libretranslate  (--load-only ar,en)             → translation
+└─ mongodb         (defined but UNUSED by the app)
+
+FastAPI app (run from src/, uvicorn :8000)
+├─ files     → assets/files/{project_id}/  (or {STORAGE_ROOT}/files)
+├─ vectors   → PGVector (in PG) or assets/database/ (Qdrant)
+└─ voice tmp → assets/voice/{project_id}/  (or {STORAGE_ROOT}/voice), deleted after use
 ```
 
-### Issues with Current Setup
-1. Relative paths for file/database storage
-2. `localhost` won't work if application in Docker
-3. No persistent file storage mechanism
-4. No backup/recovery
-5. No load balancing
-6. Single point of failure
+### Railway
+- Web service runs `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+- PostgreSQL service + a persistent volume mounted at `/data`, `STORAGE_ROOT=/data/rag`.
+- Healthcheck path: `/api/v1/welcome`.
+- PGVECTOR is the simplest production option (no separate vector service).
+- LibreTranslate / voice binaries need their own reachable services / Linux assets.
 
 ---
 
 ## Performance Characteristics
 
-### Data Processing Pipeline
 ```
-File Upload:        O(file_size)     - Linear stream read
-File Chunking:      O(file_size)     - Linear split
-Vector Embedding:   O(chunks × model) - LLM API calls (slow)
-Vector Indexing:    O(chunks × dim)   - Qdrant insert
-Vector Search:      O(log n)          - Approximate NN search
-Answer Generation:  O(context_size)   - LLM API call (slow)
+File Upload:        O(file_size)        - streamed read, size-capped
+File Chunking:      O(file_size)        - recursive splitter
+Vector Embedding:   O(chunks)           - LLM API calls (network-bound)
+Vector Indexing:    O(chunks)           - batched inserts
+Vector Search:      O(log n)            - ANN search
+Answer Generation:  O(context)          - LLM API call (network-bound)
 ```
 
 ### Bottlenecks
-1. **LLM API Calls** - Embedding and generation are network I/O bound
-2. **Vector Search** - Linear scan if no indexing (with indexing_threshold=0)
-3. **File Processing** - TextLoader reads entire file into memory
-4. **Database Inserts** - Batch size of 100 might be too small
+1. **LLM API calls** — embedding and generation are network I/O bound (Cohere
+   trial keys are rate-limited; the agent/eval paths retry with backoff).
+2. **STT/TTS** — Whisper and Piper are CPU-bound; both run off the event loop in
+   a thread with timeouts, but large models are slow on CPU.
 
-### Optimization Opportunities
-1. Batch embeddings API calls
-2. Use Qdrant indices instead of linear scan
-3. Stream file processing instead of loading all to memory
-4. Cache embeddings
-5. Add database connection pooling
-6. Implement vector quantization for smaller embeddings
-
+### Optimization opportunities
+1. Reranking after vector search (Cohere `rerank-multilingual-v3.0`) — implemented
+   behind `RERANK_ENABLED` (off by default); enable and measure with `eval_rag.py`.
+2. A larger STT model / Arabic-tuned settings for better transcription.
+3. Caching embeddings; DB connection pooling.
+4. Upgrading the embedding model to the full (1024-dim) multilingual model
+   (requires re-indexing, since the collection name encodes the vector size).
+```

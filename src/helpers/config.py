@@ -55,13 +55,25 @@ class Settings(BaseSettings):
     STT_WARMUP_TIMEOUT_SECONDS: int = 1000
 
     TTS_BACKEND: str = "PIPER"
+    TTS_TIMEOUT_SECONDS: int = 60
     PIPER_EXE_PATH: str = None
     PIPER_MODEL_PATH: str = None
+    # Arabic voice; answers detected as Arabic are synthesized with this model.
     PIPER_MODEL_PATH_AR: Optional[str] = None
 
     # Optional: allow non-wav uploads (mp3/m4a/...) and convert via ffmpeg
     FFMPEG_PATH: Optional[str] = None
     FFMPEG_TIMEOUT_SECONDS: int = 60
+
+    # =========================
+    # Reranking (optional; Cohere cross-encoder reorders vector hits)
+    # =========================
+    # Off by default: when False, retrieval behaves exactly as before.
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL_ID: str = "rerank-multilingual-v3.0"
+    # How many candidates to pull from the vector DB before reranking. The final
+    # count returned to the caller stays the requested `limit`.
+    RERANK_CANDIDATE_LIMIT: int = 30
 
     # =========================
     # Agent
@@ -127,7 +139,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # Ignore env vars this branch's Settings doesn't define. The project shares
+        # one .env across feature branches, so a var added for a feature on another
+        # branch (e.g. RERANK_*) must not crash a branch that doesn't define it.
+        extra = "ignore"
 
-settings = Settings()   
+settings = Settings()
 def get_settings():
         return settings

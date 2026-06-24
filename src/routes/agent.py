@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from controllers.AgentController import AgentController
 from helpers.auth_dependencies import get_current_user
 from helpers.config import Settings, get_settings
 from helpers.db import get_db
+from helpers.streaming import sse
 from models.enums.ResponseEnums import ResponseStatus
 from models.user_model import User
 from routes.schemes.agent import AgentChatRequest
@@ -49,7 +50,35 @@ async def agent_chat(
         user_id=current_user.id,
         create_if_missing=False,
     )
-    result = await _controller(request, settings).chat(
+    controller = _controller(request, settings)
+
+    if chat_request.stream:
+        # Auth/project-access dependencies have already run, so 401/403/404 still
+        # arrive as plain JSON; only mid-generation failures use the error event.
+        async def event_stream():
+            async for event in controller.chat_stream(
+                project=project,
+                user=current_user,
+                message=chat_request.message,
+                session_id=chat_request.session_id,
+                limit=chat_request.limit,
+            ):
+                data = event["data"]
+                if event["event"] == "done":
+                    data = {**data, "signal": ResponseStatus.AGENT_CHAT_SUCCESS.value}
+                yield sse(event["event"], data)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
+                "Connection": "keep-alive",
+            },
+        )
+
+    result = await controller.chat(
         project=project,
         user=current_user,
         message=chat_request.message,

@@ -31,6 +31,21 @@ except Exception:  # pragma: no cover - exercised when langsmith is not installe
 traceable = _traceable
 
 
+def reduce_stream_chunks(chunks: list) -> dict:
+    """Combine a traced streaming run's yielded chunks into one outputs dict.
+
+    Streaming provider methods yield {"text": ...} per token batch and a final
+    {"usage_metadata": ...}. LangSmith records a generator run's outputs as the
+    list of yielded values unless a reduce_fn folds them — and token counting
+    only works when the outputs carry a top-level `usage_metadata` key.
+    """
+    output = {"text": "".join(c.get("text", "") for c in chunks if isinstance(c, dict))}
+    for chunk in chunks:
+        if isinstance(chunk, dict) and "usage_metadata" in chunk:
+            output["usage_metadata"] = chunk["usage_metadata"]
+    return output
+
+
 def add_llm_run_metadata(model: str = None, provider: str = None) -> None:
     """Tag the current LangSmith run with `ls_model_name`/`ls_provider`.
 

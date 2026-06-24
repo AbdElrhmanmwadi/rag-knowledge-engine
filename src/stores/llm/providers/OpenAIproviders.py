@@ -3,7 +3,8 @@ import logging
 
 from stores.LLMEnum import OpenAIEnums
 from stores.LLMinterface import LLMInterface
-from helpers.observability import traceable, add_llm_run_metadata
+from helpers.observability import traceable, add_llm_run_metadata, reduce_stream_chunks
+from helpers.streaming import open_stream_with_retry
 from typing import List,Union
 class OpenAIprovider(LLMInterface):
     def __init__(self,api_key: str,api_url: str=None,
@@ -76,14 +77,87 @@ class OpenAIprovider(LLMInterface):
             self.logger.error("Error while generating text with openai")
             return None
         output = {"text": response.choices[0].message.content}
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            output["usage_metadata"] = {
-                "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-            }
+        usage = self._usage_metadata(response)
+        if usage:
+            output["usage_metadata"] = usage
         return output
+
+    def genarate_text_stream(self, prompt:str,max_output_tokens:int=None,chat_history:list=None,temperature:float=None):
+        if not self.client:
+            self.logger.error("OpenAI CLIENT was not set ")
+            return
+        if not self.genaration_model_id:
+            self.logger.error("generation model for OpenAI was not set ")
+            return
+        max_output_tokens=max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
+        # `is not None` (not a truthy check): temperature=0 is a valid, deterministic
+        # setting — a plain `if temperature` would wrongly fall back to the default.
+        temperature=temperature if temperature is not None else self.default_generation_temperature
+        # Copy so we never mutate the caller's list (and avoid a shared mutable default).
+        chat_history = list(chat_history) if chat_history else []
+        chat_history.append({"role": OpenAIEnums.USER.value, "content": prompt})
+        for item in self._chat_stream(
+            chat_history=chat_history,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        ):
+            # The traced generator also yields a final usage_metadata item for
+            # LangSmith; only the text chunks go to the caller.
+            text = item.get("text") if isinstance(item, dict) else None
+            if text:
+                yield text
+
+    @traceable(
+        run_type="llm",
+        name="openai.generate_text_stream",
+        metadata={"ls_provider": "openai"},
+        reduce_fn=reduce_stream_chunks,
+    )
+    def _chat_stream(self, chat_history:list, temperature:float, max_output_tokens:int):
+        add_llm_run_metadata(model=self.genaration_model_id, provider="openai")
+
+        def open_stream(include_usage: bool):
+            kwargs = dict(
+                model=self.genaration_model_id,
+                messages=chat_history,
+                max_tokens=max_output_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+            if include_usage:
+                # Asks the API to append a final usage chunk; OpenAI-compatible
+                # backends that reject the option fall back below.
+                kwargs["stream_options"] = {"include_usage": True}
+            return self.client.chat.completions.create(**kwargs)
+
+        try:
+            stream = open_stream_with_retry(lambda: open_stream(True), logger=self.logger)
+        except Exception as exc:
+            if "stream_options" not in str(exc):
+                raise
+            stream = open_stream_with_retry(lambda: open_stream(False), logger=self.logger)
+
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None)
+            if choices:
+                delta = getattr(choices[0], "delta", None)
+                content = getattr(delta, "content", None) if delta else None
+                if content:
+                    yield {"text": content}
+            usage = self._usage_metadata(chunk)
+            if usage:
+                yield {"usage_metadata": usage}
+
+    @staticmethod
+    def _usage_metadata(response):
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+        return {
+            "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+            "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+            "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+        }
 
 
         
