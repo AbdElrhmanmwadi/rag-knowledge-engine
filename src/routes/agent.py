@@ -29,6 +29,8 @@ def _controller(request: Request, settings: Settings) -> AgentController:
         max_history_messages=settings.AGENT_MAX_HISTORY_MESSAGES,
         rerank_enabled=settings.RERANK_ENABLED,
         rerank_candidate_limit=settings.RERANK_CANDIDATE_LIMIT,
+        cache_enabled=settings.ANSWER_CACHE_ENABLED,
+        cache_threshold=settings.ANSWER_CACHE_SIMILARITY_THRESHOLD,
     )
 
 
