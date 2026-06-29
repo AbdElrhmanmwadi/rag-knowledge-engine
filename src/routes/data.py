@@ -46,7 +46,6 @@ async def upload_data(
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
 
     is_valid, status_message = await DataController().validate_uploaded_file(file=file)
-    print(is_valid, status_message)
     if not is_valid:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"status": status_message})
     file_path, file_id = DataController().generate_unique_file_Path(
@@ -58,6 +57,13 @@ async def upload_data(
                 await out_file.write(chunk)
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
+        # A failed write leaves a partial file on disk with no matching asset record,
+        # so it would just accumulate as orphaned garbage. Remove it before returning.
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as cleanup_err:
+            logger.error(f"Error cleaning up partial upload {file_path}: {cleanup_err}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"status": ResponseStatus.FILE_UPLOAD_FAILED.value},
