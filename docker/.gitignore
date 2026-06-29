@@ -1,0 +1,6 @@
+# The root .gitignore ignores `ENV/`, which on case-insensitive Windows also matches
+# this `env/` directory. Re-include the directory, then keep only the templates:
+# real per-service env files hold secrets and must stay out of git.
+!env/
+env/.env.*
+!env/.env.example.*

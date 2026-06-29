@@ -14,8 +14,9 @@ from stores.llm.voice import VoiceProviderFactory
 
 from stores.translation.TranslationProviderFactory import TranslationProviderFactory
 from stores.Vectordb.VectorDBProviderFactory import VectorDBProviderFactory
-from stores.llm.template_parser import TemplateParser  
-from fastapi.middleware.cors import CORSMiddleware 
+from stores.llm.template_parser import TemplateParser
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 
 app = FastAPI()
@@ -27,6 +28,10 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+# Expose request/latency/status metrics at /metrics for Prometheus to scrape.
+# Nginx blocks /metrics from the public internet, so it stays internal-only.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 logger = logging.getLogger("uvicorn.error")
 
 

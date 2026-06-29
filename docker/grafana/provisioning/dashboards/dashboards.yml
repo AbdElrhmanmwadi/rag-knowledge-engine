@@ -1,0 +1,17 @@
+apiVersion: 1
+
+# Any dashboard JSON dropped into /var/lib/grafana/dashboards is auto-loaded.
+# Import community dashboards from the README (FastAPI 18739, Node 1860,
+# Postgres 12485, Qdrant 23033) via the UI, or export their JSON into
+# docker/grafana/dashboards/ to have them provisioned automatically.
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

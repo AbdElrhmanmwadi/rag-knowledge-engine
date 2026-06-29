@@ -7,6 +7,7 @@ python-multipart==0.0.9
 python-dotenv==1.0.1
 aiofiles==23.2.1
 prometheus-client==0.20.0
+prometheus-fastapi-instrumentator==7.0.0
 
 # =========================
 # Pydantic
@@ -18,7 +19,10 @@ pydantic-settings>=2.6.1
 # LLM + RAG
 # =========================
 langchain-community==0.0.38
-langgraph>=0.2.0
+# langgraph is intentionally omitted: it requires langchain-core>=0.2.27, which
+# conflicts with langchain-community==0.0.38 / langchain-text-splitters==0.0.2 (both
+# need langchain-core<0.2). agent_service.py imports it in a try/except and runs a
+# fallback path when it is absent — matching the working (langgraph-free) environment.
 langchain-text-splitters==0.0.2
 langsmith>=0.1.0
 openai==1.75.0
@@ -39,6 +43,8 @@ openpyxl==3.1.5
 # =========================
 SQLAlchemy==2.0.36
 asyncpg==0.30.0
+# Sync driver used by Alembic migrations (the app itself uses asyncpg).
+psycopg2-binary==2.9.9
 alembic==1.14.0
 passlib[bcrypt]==1.7.4
 PyJWT==2.10.1

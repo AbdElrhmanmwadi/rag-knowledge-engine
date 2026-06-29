@@ -1,51 +1,57 @@
+# =========================================================================
+# Backend (FastAPI) application config — Docker.
+# Copy to .env.app and fill in real secrets (COHERE_API_KEY, JWT_SECRET_KEY...).
+# Hostnames below are Docker Compose service names, not localhost.
+# =========================================================================
 APP_NAME="RAG Knowledge Engine"
-APP_DESCRIPTION="A knowledge engine that uses Retrieval-Augmented Generation (RAG) to provide accurate and relevant information based on user queries. It combines the power of large language models with a retrieval system to access a vast amount of data and generate informative responses."
+APP_DESCRIPTION="A knowledge engine that uses Retrieval-Augmented Generation (RAG) to provide accurate and relevant information based on user queries."
 APP_VERSION="1.0.0"
-FILE_MAX_SIZE=10 # 10 MB
-FILE_DEFAULT_CHUNK_SIZE=512000 # 0.5 MB
+FILE_MAX_SIZE=10            # MB
+FILE_DEFAULT_CHUNK_SIZE=512000  # 0.5 MB
 STORAGE_ROOT="/data/rag"
-# ========================= Postgres Config =========================
+
+# ========================= Postgres (pgvector service) =========================
 POSTGRES_USERNAME="postgres"
-POSTGRES_PASSWORD="your_postgres_password"
-POSTGRES_HOST="your-railway-postgres-host"
+POSTGRES_PASSWORD="change_me"
+POSTGRES_HOST="pgvector"
 POSTGRES_PORT=5432
 POSTGRES_DB="minirag-v1"
+
 # ========================= LLM Config =========================
-#GENERATION_BACKEND="OPENAI"
 GENERATION_BACKEND="COHERE"
 EMBEDDING_BACKEND="COHERE"
 OPENAI_API_URL=""
 COHERE_API_KEY="your_cohere_api_key"
 OPENAI_API_KEY="your_openai_api_key"
-#GENERATION_MODEL_ID="gpt-3.5-turbo-0125"
 GENERATION_MODEL_ID=command-a-03-2025
 EMBEDDING_MODEL_ID="embed-multilingual-light-v3.0"
 EMBEDDING_MODEL_SIZE=384
 INPUT_DAFAULT_MAX_CHARACTERS=1024
 GENERATION_DAFAULT_MAX_TOKENS=1024
 GENERATION_DAFAULT_TEMPERATURE=0.1
+
 # ========================= Vector DB Config =========================
-VECTOR_DB_BACKEND_LITERAL = ["QDRANT", "PGVECTOR"]
-#VECTOR_DB_BACKEND="QDRANT"
-VECTOR_DB_BACKEND = "PGVECTOR"
+# Active backend is PGVECTOR (uses the pgvector Postgres service above).
+# A standalone Qdrant service is also available at http://qdrant:6333 if you switch.
+VECTOR_DB_BACKEND_LITERAL=["QDRANT", "PGVECTOR"]
+VECTOR_DB_BACKEND="PGVECTOR"
 VECTOR_DB_PATH="qdrant_db"
 VECTOR_DB_DISTANCE_METHOD="cosine"
-VECTOR_DB_PGVEC_INDEX_THRESHOLD =100
-# ========================= template Config =========================
-PRIMARY_LANG= "en"
-DEFAULT_LANG= "en"
+VECTOR_DB_PGVEC_INDEX_THRESHOLD=100
 
-TRANSLATION_ENGINE = "LIBRETRANSLATE"
-TRANSLATION_API_KEY = ""
-# Railway note:
-# If LibreTranslate runs as another Railway service, replace localhost with its internal URL.
-# Example: http://libretranslate.railway.internal:5000/translate
-TRANSLATION_BASE_URL = "http://libretranslate.railway.internal:5000/translate"
-TRANSLATION_FILE_ENDPOINT_URL = "http://libretranslate.railway.internal:5000/translate/file"
-TRANSLATION_TIMEOUT_SECONDS = 60
-TRANSLATION_MAX_RETRIES = 2
-TRANSLATION_RETRY_BACKOFF_SECONDS = 1.0
-DEFAULT_TARGET_LANG= "ar"
+# ========================= Template / Language =========================
+PRIMARY_LANG="en"
+DEFAULT_LANG="en"
+
+# ========================= Translation (libretranslate service) =========================
+TRANSLATION_ENGINE="LIBRETRANSLATE"
+TRANSLATION_API_KEY=""
+TRANSLATION_BASE_URL="http://libretranslate:5000/translate"
+TRANSLATION_FILE_ENDPOINT_URL="http://libretranslate:5000/translate/file"
+TRANSLATION_TIMEOUT_SECONDS=60
+TRANSLATION_MAX_RETRIES=2
+TRANSLATION_RETRY_BACKOFF_SECONDS=1.0
+DEFAULT_TARGET_LANG="ar"
 
 # ========================= Voice (STT / TTS) =========================
 STT_BACKEND=FASTER_WHISPER
@@ -57,11 +63,8 @@ STT_WARMUP_ON_STARTUP=False
 STT_WARMUP_TIMEOUT_SECONDS=600
 TTS_BACKEND=PIPER
 TTS_TIMEOUT_SECONDS=60
-# Railway note:
-# Use Linux paths inside the container if you install piper manually.
 PIPER_EXE_PATH=""
 PIPER_MODEL_PATH=""
-# Optional Arabic Piper voice model (used for Arabic TTS).
 PIPER_MODEL_PATH_AR=""
 # ffmpeg is installed in the Docker image, so FFMPEG_PATH is usually not needed.
 
@@ -72,21 +75,15 @@ AGENT_MAX_OUTPUT_TOKENS=500
 AGENT_MAX_HISTORY_MESSAGES=10
 
 # ========================= Reranking (optional, Cohere) =========================
-# When True, retrieval fetches RERANK_CANDIDATE_LIMIT chunks then a Cohere
-# cross-encoder reranks them down to the requested limit. False keeps current behavior.
 RERANK_ENABLED=False
 RERANK_MODEL_ID=rerank-multilingual-v3.0
 RERANK_CANDIDATE_LIMIT=30
 
 # ========================= Semantic answer cache (optional) =========================
-# When True, a question semantically similar (>= threshold) to a previously
-# answered one returns the stored answer instantly, skipping retrieval + generation.
 ANSWER_CACHE_ENABLED=False
 ANSWER_CACHE_SIMILARITY_THRESHOLD=0.95
 
 # ========================= Observability (LangSmith) =========================
-# Set to true and provide an API key to send agent/RAG traces to LangSmith.
-# The legacy LANGCHAIN_* names are also accepted.
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=""
 LANGSMITH_PROJECT="rag-knowledge-engine"
@@ -100,6 +97,5 @@ REFRESH_TOKEN_EXPIRE_DAYS=14
 EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24
 RESEND_API_KEY="re_replace_with_resend_api_key"
 RESEND_FROM_EMAIL="Voxora <noreply@your-domain.com>"
-FRONTEND_BASE_URL="https://your-domain.com"
+FRONTEND_BASE_URL="http://localhost"
 GOOGLE_CLIENT_ID=""
-

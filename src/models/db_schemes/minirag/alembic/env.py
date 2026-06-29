@@ -1,5 +1,6 @@
 from logging.config import fileConfig
 from pathlib import Path
+import os
 import sys
 
 from sqlalchemy import engine_from_config
@@ -19,6 +20,37 @@ from models import token_model, user_model  # noqa: F401
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+
+def _resolve_db_url() -> str | None:
+    """Prefer an explicit DATABASE_URL, else build one from POSTGRES_* env vars.
+
+    Lets migrations run inside Docker (where the URL comes from the environment)
+    without hardcoding credentials in alembic.ini. Alembic runs synchronously, so
+    we use the psycopg2 driver here even though the app itself uses asyncpg.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url.replace("postgres://", "postgresql+psycopg2://").replace(
+            "postgresql+asyncpg://", "postgresql+psycopg2://"
+        )
+
+    user = os.getenv("POSTGRES_USERNAME") or os.getenv("POSTGRES_USER")
+    password = os.getenv("POSTGRES_PASSWORD")
+    host = os.getenv("POSTGRES_HOST")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB")
+    if all([user, password, host, db]):
+        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+    return None
+
+
+# Prefer an env-derived URL whenever POSTGRES_*/DATABASE_URL are present (the Docker
+# case): the image may bake an alembic.ini pointing at localhost, which is wrong inside
+# a container. With no such env vars (local runs), fall back to whatever alembic.ini holds.
+_env_url = _resolve_db_url()
+if _env_url:
+    config.set_main_option("sqlalchemy.url", _env_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

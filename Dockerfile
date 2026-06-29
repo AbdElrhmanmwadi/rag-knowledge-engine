@@ -17,5 +17,8 @@ RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
 COPY src ./src
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# The entrypoint runs alembic migrations, then execs uvicorn on port 8000.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

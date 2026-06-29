@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus scraping itself. It runs behind the /prometheus/ route prefix
+  # (--web.external-url), so its own metrics live at /prometheus/metrics.
+  - job_name: prometheus
+    metrics_path: /prometheus/metrics
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # FastAPI backend metrics exposed by prometheus-fastapi-instrumentator at /metrics.
+  - job_name: fastapi
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:8000"]
+
+  # PostgreSQL (pgvector) metrics via postgres-exporter.
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Host/system metrics via node-exporter.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Qdrant exposes Prometheus metrics at /metrics on its HTTP port.
+  - job_name: qdrant
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["qdrant:6333"]
