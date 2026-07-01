@@ -293,6 +293,9 @@ CREATE TABLE translation_jobs (
 
 Migrations live in `src/models/db_schemes/minirag/alembic/versions/`; apply with
 `alembic upgrade head` (see README). Tables are **not** auto-created on startup.
+Under Docker this runs automatically (the backend entrypoint calls `alembic upgrade
+head`, deriving the DB URL from the `POSTGRES_*` env vars); run it manually only when
+running the app locally without Docker.
 
 ---
 
@@ -390,17 +393,33 @@ LANGSMITH_TRACING / LANGSMITH_API_KEY / LANGSMITH_PROJECT / LANGSMITH_ENDPOINT
 ## Deployment Architecture
 
 ### Local / Docker
+
+`docker/docker-compose.yml` runs the full stack (11 services). See
+[docker/README.md](docker/README.md) for setup, env files, and monitoring.
+
 ```
 docker/docker-compose.yml
-├─ pgvector        (PostgreSQL + pgvector)         → relational + vector store
-├─ libretranslate  (--load-only ar,en)             → translation
-└─ mongodb         (defined but UNUSED by the app)
+├─ backend           (FastAPI, uvicorn :8000; entrypoint runs alembic upgrade head)
+├─ frontend          (placeholder web UI — replace with the real frontend)
+├─ nginx             (reverse proxy :80 → backend / grafana / prometheus)
+├─ pgvector          (PostgreSQL + pgvector)         → relational + vector store
+├─ mongodb           (defined but UNUSED by the app)
+├─ qdrant            (available; not the active backend unless VECTOR_DB_BACKEND=QDRANT)
+├─ libretranslate    (--load-only ar,en)             → translation
+├─ prometheus        (scrapes backend /metrics + exporters)
+├─ grafana           (dashboards; Prometheus datasource auto-provisioned)
+├─ postgres-exporter (PostgreSQL metrics)
+└─ node-exporter     (host metrics)
 
-FastAPI app (run from src/, uvicorn :8000)
+backend runtime paths:
 ├─ files     → assets/files/{project_id}/  (or {STORAGE_ROOT}/files)
 ├─ vectors   → PGVector (in PG) or assets/database/ (Qdrant)
 └─ voice tmp → assets/voice/{project_id}/  (or {STORAGE_ROOT}/voice), deleted after use
 ```
+
+Migrations run **automatically** on backend start (entrypoint → `alembic upgrade head`,
+DB URL built from `POSTGRES_*` env vars). Monitoring: the app exposes `/metrics`
+(`prometheus-fastapi-instrumentator`), Prometheus scrapes it, Grafana visualizes it.
 
 ### Railway
 - Web service runs `uvicorn main:app --host 0.0.0.0 --port $PORT`.

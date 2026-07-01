@@ -40,6 +40,16 @@ src/
 docs/                  # frontend integration guides (see below)
 ```
 
+## Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the system works: layers, data models,
+  request flows, DB schema, and configuration.
+- **[PROJECT_BLUEPRINT.md](PROJECT_BLUEPRINT.md)** — the structural blueprint (layers,
+  Interface/Factory/Provider pattern, conventions) for reproducing this architecture in
+  a new project.
+- **[docker/README.md](docker/README.md)** — the full Docker stack, env files, monitoring,
+  Grafana dashboards, and troubleshooting.
+
 ## Authentication
 
 All feature endpoints require a bearer token. Obtain one from the auth endpoints
@@ -133,13 +143,33 @@ pip install -r requirements.txt
 If you use Conda, activate your environment first (this project is developed
 against a Conda env, e.g. `conda activate mini-rag-full-win`).
 
-### Infrastructure (PostgreSQL/PGVector, LibreTranslate)
+### Full Docker stack (recommended)
 
-The simplest way to bring up the backing services is the bundled compose file,
-which starts PostgreSQL (PGVector), MongoDB, and LibreTranslate (Arabic + English):
+`docker/docker-compose.yml` runs the **entire application** as an 11-service stack:
+the FastAPI backend, a placeholder frontend, an Nginx reverse proxy, PostgreSQL
+(pgvector), MongoDB, Qdrant, LibreTranslate, and a monitoring stack (Prometheus,
+Grafana, postgres-exporter, node-exporter).
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+cd docker
+# create the per-service env files from the examples first (see docker/README.md)
+docker compose up --build -d
+```
+
+- App via Nginx: http://localhost · API docs: http://localhost:8000/docs
+- Grafana: http://localhost/grafana/ · Prometheus: http://localhost/prometheus/
+- **Migrations run automatically** on backend start (the entrypoint runs
+  `alembic upgrade head`, building the DB URL from the `POSTGRES_*` env vars).
+
+Full setup, env files, monitoring and dashboards, and troubleshooting are documented
+in **[docker/README.md](docker/README.md)**.
+
+### Backing services only
+
+To bring up just the databases/translation (e.g. when running the app locally):
+
+```bash
+docker compose -f docker/docker-compose.yml up -d pgvector mongodb libretranslate
 ```
 
 Or provide your own PostgreSQL with the `vector` extension and point `.env`/the
@@ -149,6 +179,10 @@ Alembic URL at it.
 
 The app does **not** create tables on startup — run the Alembic migrations once
 against your database before first launch (and after pulling new migrations).
+
+> **Docker users:** you can skip this section — the `backend` container's entrypoint
+> runs `alembic upgrade head` automatically on start (it derives the DB URL from the
+> `POSTGRES_*` env vars). The steps below are for running the app **locally** without Docker.
 
 1. Copy the Alembic config and set your database URL:
 
