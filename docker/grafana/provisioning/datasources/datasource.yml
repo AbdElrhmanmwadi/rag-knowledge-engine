@@ -4,7 +4,11 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
+    # Fixed uid so provisioned dashboards can reference it deterministically.
+    uid: prometheus
     access: proxy
-    url: http://prometheus:9090
+    # Prometheus runs behind the /prometheus/ route prefix (--web.external-url), so its
+    # API lives at /prometheus/api/... — the datasource URL must include that prefix.
+    url: http://prometheus:9090/prometheus
     isDefault: true
     editable: true
