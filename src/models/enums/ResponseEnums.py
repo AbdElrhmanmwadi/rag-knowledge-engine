@@ -40,3 +40,6 @@ class ResponseStatus(Enum):
     AGENT_SESSIONS_SUCCESS = "agent_sessions_success"
     AGENT_SESSION_SUCCESS = "agent_session_success"
     AGENT_SESSION_DELETED = "agent_session_deleted"
+    FEEDBACK_SUCCESS = "feedback_success"
+    FEEDBACK_INVALID_RATING = "feedback_invalid_rating"
+    FEEDBACK_ANALYTICS_SUCCESS = "feedback_analytics_success"

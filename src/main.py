@@ -4,7 +4,7 @@ import os
 
 from fastapi import FastAPI
 from controllers.VoiceController import VoiceController
-from routes import agent, auth_router, base, data, nlp, projects, translation_router, voice
+from routes import agent, auth_router, base, data, feedback, nlp, projects, translation_router, voice
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from helpers.config import get_settings
@@ -124,3 +124,4 @@ app.include_router(nlp.nlp_router)
 app.include_router(translation_router.translation_router)
 app.include_router(voice.voice_router)
 app.include_router(agent.agent_router)
+app.include_router(feedback.feedback_router)

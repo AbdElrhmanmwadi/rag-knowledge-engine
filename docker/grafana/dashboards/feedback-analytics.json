@@ -1,0 +1,75 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": ["rag", "feedback"],
+  "title": "Answer Feedback - Analytics",
+  "uid": "feedback-analytics",
+  "time": { "from": "now-30d", "to": "now" },
+  "refresh": "30s",
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total feedback",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table", "rawSql": "SELECT count(*) AS total FROM answer_feedback;" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "CSAT (% helpful)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 50 }, { "color": "green", "value": 75 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table", "rawSql": "SELECT round(100.0 * sum((rating = 1)::int)::numeric / nullif(count(*), 0), 1) AS csat FROM answer_feedback;" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "👍 Helpful",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table", "rawSql": "SELECT count(*) AS helpful FROM answer_feedback WHERE rating = 1;" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "👎 Not helpful",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table", "rawSql": "SELECT count(*) AS not_helpful FROM answer_feedback WHERE rating = -1;" } ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top disliked questions (👎)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "count", "desc": true } ] },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table", "rawSql": "SELECT question, count(*) AS count FROM answer_feedback WHERE rating = -1 GROUP BY question ORDER BY count DESC LIMIT 20;" } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Feedback per day",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } }, "overrides": [ { "matcher": { "id": "byName", "options": "positive" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }, { "matcher": { "id": "byName", "options": "negative" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] } ] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series", "rawSql": "SELECT date_trunc('day', created_at) AS time, sum((rating = 1)::int) AS positive, sum((rating = -1)::int) AS negative FROM answer_feedback GROUP BY 1 ORDER BY 1;" } ]
+    }
+  ]
+}

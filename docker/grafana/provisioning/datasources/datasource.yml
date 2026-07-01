@@ -12,3 +12,19 @@ datasources:
     url: http://prometheus:9090/prometheus
     isDefault: true
     editable: true
+
+  # PostgreSQL (pgvector) — powers the answer-feedback analytics dashboard.
+  # Password comes from the POSTGRES_PASSWORD env var (Grafana expands $VAR here),
+  # so it is not hardcoded in this committed file.
+  - name: Postgres
+    type: postgres
+    uid: postgres
+    url: pgvector:5432
+    user: postgres
+    secureJsonData:
+      password: $POSTGRES_PASSWORD
+    jsonData:
+      database: minirag-v1
+      sslmode: disable
+      postgresVersion: 1800
+    editable: true
