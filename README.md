@@ -393,6 +393,7 @@ Ready-to-hand guides for the frontend live in `docs/`:
 - [docs/password-reset-api.md](docs/password-reset-api.md) — password reset flow
 - [docs/agent-streaming-frontend-prompt.md](docs/agent-streaming-frontend-prompt.md) — SSE chat streaming
 - [docs/voice-frontend-prompt.md](docs/voice-frontend-prompt.md) — voice endpoints
+- [docs/feedback-frontend-prompt.md](docs/feedback-frontend-prompt.md) — answer feedback (👍/👎) + analytics
 - [docs/translation-frontend-prompt.md](docs/translation-frontend-prompt.md) — translation job flow
 - [docs/translation-libretranslate.md](docs/translation-libretranslate.md) — LibreTranslate provider contract
 
