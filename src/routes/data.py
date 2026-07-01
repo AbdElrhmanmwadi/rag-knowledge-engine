@@ -234,11 +234,14 @@ async def list_files(
         asset_project_id=project.project_id, asset_type=AssetTypeEnum.FILE.value
     )
     # One grouped query for all files; chunk_count>0 means the file was processed
-    # (split into chunks). file_id is the asset_id, which keys the counts map.
+    # (split into chunks). chunk_counts is keyed by the numeric asset_id.
     chunk_counts = await chunk_model.get_chunk_counts_by_asset(project_id=project.project_id)
     files_list = [
         {
-            "file_id": record.asset_id,
+            # file_id is the asset_name — the identifier every other /data endpoint
+            # (upload, process, delete, file info) expects. The numeric DB id is asset_id.
+            "file_id": record.asset_name,
+            "asset_id": record.asset_id,
             "file_size": record.asset_size,
             "file_name": record.asset_name,
             "file_type": record.asset_type,
@@ -279,6 +282,10 @@ async def delete_file(
                 "signal": ResponseStatus.FILE_ID_ERROR.value,
             },
         )
+    # If the file was processed, its chunks reference the asset (FK). Delete them
+    # first, otherwise deleting the asset raises a ForeignKeyViolation (500).
+    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
+    await chunk_model.delete_chunks_by_asset_id(asset_id=asset_record.asset_id)
     deleted_asset = await asset_model.delete_asset_by_id(asset_id=asset_record.asset_id)
     if deleted_asset is None:
         return JSONResponse(
