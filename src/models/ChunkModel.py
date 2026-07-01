@@ -49,6 +49,19 @@ class ChunkModel(BaseDataModel):
                     await session.delete(chunk)
                 await session.commit()
         return len(chunks_to_delete)
+
+    async def delete_chunks_by_asset_id(self, asset_id: int):
+        # A processed file's chunks reference its asset (FK), so they must be removed
+        # before the asset itself can be deleted.
+        async with self.db_client() as session:
+            async with session.begin():
+                query = select(DataChunk).where(DataChunk.chunk_asset_id == asset_id)
+                result = await session.execute(query)
+                chunks_to_delete = result.scalars().all()
+                for chunk in chunks_to_delete:
+                    await session.delete(chunk)
+                await session.commit()
+        return len(chunks_to_delete)
     
     async def get_chunks_by_project_id(self, project_id: str,page_number:int=1,page_size:int=10):
         async with self.db_client() as session:
