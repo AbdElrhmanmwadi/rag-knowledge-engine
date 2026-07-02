@@ -193,7 +193,8 @@ async def answer_rag_question(
             produced = False
             try:
                 async for chunk in nlp_controller.answer_rag_question_stream(
-                    query=search_request.text, project=project, limit=search_request.limit
+                    query=search_request.text, project=project, limit=search_request.limit,
+                    template_group="rag_chat",
                 ):
                     if chunk:
                         produced = True
@@ -223,7 +224,8 @@ async def answer_rag_question(
         )
 
     rag_answer, full_prompt, chat_history = await nlp_controller.answer_rag_question(
-        query=search_request.text, project=project, limit=search_request.limit
+        query=search_request.text, project=project, limit=search_request.limit,
+        template_group="rag_chat",
     )
     if not rag_answer:
         return JSONResponse(

@@ -239,7 +239,7 @@ class NLPController(BaseController):
             )
         return messages
 
-    async def _build_rag_prompt(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+    async def _build_rag_prompt(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None,template_group:str="rag"):
         """Build (full_prompt, chat_history) for a RAG answer, or None on failure.
 
         Shared by the blocking and streaming answer paths so both send the model
@@ -252,13 +252,13 @@ class NLPController(BaseController):
             logger.warning(f"No documents retrieved for query: {query}")
             return None
         logger.info(f"Retrieved {len(retreved_documant)} documents")
-        system_promit=self.template_parser.get("rag","system_prompt")
+        system_promit=self.template_parser.get(template_group,"system_prompt")
         if not system_promit:
             logger.error("Failed to get system_prompt from template parser")
             return None
         document_prompts = []
         for idx, doc in enumerate(retreved_documant):
-            doc_prompt = self.template_parser.get("rag","documant_prompt",{
+            doc_prompt = self.template_parser.get(template_group,"documant_prompt",{
                  "doc_number":idx+1,
                  "chunk_text":self.generation_client.process_text(doc.text),
                  "page_number":doc.meta_data.get("page") if doc.meta_data else None,
@@ -269,7 +269,7 @@ class NLPController(BaseController):
             logger.error("Failed to generate document prompts")
             return None
         document_prompt="\n".join(document_prompts)
-        footer_prompt=self.template_parser.get("rag","footer_prompt",{
+        footer_prompt=self.template_parser.get(template_group,"footer_prompt",{
             "query":query
         })
         if not footer_prompt:
@@ -283,9 +283,9 @@ class NLPController(BaseController):
         return full_prompt,chat_history
 
     @traceable(run_type="chain", name="answer_rag_question")
-    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+    async def answer_rag_question(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None,template_group:str="rag"):
         answer = None
-        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents,template_group=template_group)
         if built is None:
             return None,None,None
         full_prompt,chat_history = built
@@ -305,10 +305,10 @@ class NLPController(BaseController):
         return answer,full_prompt,chat_history
 
     @traceable(run_type="chain", name="answer_rag_question_stream")
-    async def answer_rag_question_stream(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None):
+    async def answer_rag_question_stream(self,query:str,project:Project,limit:int=30,history:list=None,documents:list=None,template_group:str="rag"):
         """Yield answer text chunks; yields nothing when no prompt could be built
         (the caller falls back to its no-context message)."""
-        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents)
+        built = await self._build_rag_prompt(query=query,project=project,limit=limit,history=history,documents=documents,template_group=template_group)
         if built is None:
             return
         full_prompt,chat_history = built
