@@ -84,6 +84,24 @@ SSE event order: `meta` (session id + sources + tool trace) → `delta`* (text
 chunks) → `done` (full answer). Mid-generation failures emit an `error` event.
 See [docs/agent-streaming-frontend-prompt.md](docs/agent-streaming-frontend-prompt.md).
 
+## RAG Chat vs Agent — prompts
+
+Both the direct RAG chat (`POST /api/v1/nlp/index/answer/{project_id}`) and the
+agent (`POST /api/v1/agent/chat/{project_id}`) answer **only from the project's
+indexed files**. They differ in the system prompt each uses, selected by
+`template_group` in `NLPController._build_rag_prompt` (default `"rag"`):
+
+- **Agent → `rag` template.** A customer-support persona locked to answering the
+  user's question from the documents. Unchanged; the agent never passes
+  `template_group`, so it always uses this.
+- **RAG chat → `rag_chat` template.** A general assistant that can not only answer
+  but also **translate, summarize, rephrase, or generate new text** — still using
+  the file content only. It also replies in the request's language *unless* the
+  user asks for another language (so translation requests work).
+
+Prompt files live in `src/stores/llm/templete/local/{en,ar}/` as `rag.py`
+(agent) and `rag_chat.py` (chat). Editing one does not affect the other.
+
 ## Voice Architecture
 
 Voice follows the same provider pattern used elsewhere in the project.
