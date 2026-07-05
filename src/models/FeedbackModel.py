@@ -1,4 +1,4 @@
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from models.db_schemes.minirag.scheme.feedback import AnswerFeedback
 
@@ -45,14 +45,14 @@ class FeedbackModel(BaseDataModel):
             totals = await session.execute(
                 select(
                     func.count().label("total"),
-                    func.coalesce(func.sum(case((AnswerFeedback.rating == 1, 1), else_=0)), 0).label("positive"),
-                    func.coalesce(func.sum(case((AnswerFeedback.rating == -1, 1), else_=0)), 0).label("negative"),
+                    func.count().filter(AnswerFeedback.rating == 1).label("positive"),
+                    func.count().filter(AnswerFeedback.rating == -1).label("negative"),
                 ).where(AnswerFeedback.project_id == project_id)
             )
             row = totals.one()
-            total = int(row.total or 0)
-            positive = int(row.positive or 0)
-            negative = int(row.negative or 0)
+            total = int(row.total)
+            positive = int(row.positive)
+            negative = int(row.negative)
             # CSAT = share of positive ratings; None when there is no feedback yet.
             csat = round(positive / total, 3) if total else None
 
