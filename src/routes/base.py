@@ -14,3 +14,9 @@ async def welcome(app_settings: Settings = Depends(get_settings)):
     
     return {"app_name": app_name, "description": app_description, "version": app_version}
 
+
+@base_router.get("/healthz", include_in_schema=False)
+async def healthz():
+    """Liveness check. Dependency initialization is completed before routes serve."""
+    return {"status": "ok"}
+

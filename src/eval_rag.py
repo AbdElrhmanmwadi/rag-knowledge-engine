@@ -44,8 +44,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 # --- defaults (override on the CLI) ------------------------------------------
 BASE = "http://localhost:8000"
-EMAIL = "wadiabood577@gmail.com"
-PASSWORD = "Ab0230@wadi"
+EMAIL = ""
+PASSWORD = ""
 PROJECT = 1000  # projects with the Numero eSIM KB ingested: 668, 700, 1000 (NOT 600)
 KB_PATH = Path(__file__).with_name("knowledge_base_qa.txt")
 DATASET_NAME = "numero-esim-kb"
@@ -197,6 +197,8 @@ def main() -> None:
         for i, item in enumerate(qa[:3], 1):
             print(f"\n[{i}] Q: {item['question']}\n    REF: {item['reference'][:120]}...")
         return
+    if not args.email or not args.password:
+        ap.error("--email and --password are required unless --dry-run is used")
 
     settings = get_settings()
     if not configure_langsmith(settings):

@@ -1,10 +1,14 @@
-from dataclasses import dataclass
-from typing import Any
+from __future__ import annotations
 
-from controllers.NLPController import NLPController
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
 from models.AssetModel import AssetModel
 from models.db_schemes.minirag.scheme import Project
 from models.enums.AssetTypeEnum import AssetTypeEnum
+
+if TYPE_CHECKING:
+    from controllers.NLPController import NLPController
 
 
 @dataclass

@@ -6,6 +6,9 @@
 APP_NAME="RAG Knowledge Engine"
 APP_DESCRIPTION="A knowledge engine that uses Retrieval-Augmented Generation (RAG) to provide accurate and relevant information based on user queries."
 APP_VERSION="1.0.0"
+# Change to production for a live deployment. Production rejects weak JWT secrets
+# and insecure FRONTEND_BASE_URL values at startup.
+APP_ENV="development"
 FILE_MAX_SIZE=10            # MB
 FILE_DEFAULT_CHUNK_SIZE=512000  # 0.5 MB
 STORAGE_ROOT="/data/rag"

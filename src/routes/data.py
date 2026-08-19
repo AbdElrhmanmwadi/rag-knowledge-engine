@@ -31,6 +31,19 @@ data_router = APIRouter(
 )
 
 
+async def _write_upload_capped(file: UploadFile, path: str, settings: Settings) -> bool:
+    """Write an upload incrementally and reject it once it exceeds the byte cap."""
+    max_bytes = settings.FILE_MAX_SIZE * 1024 * 1024
+    written = 0
+    async with aiofiles.open(path, "wb") as out_file:
+        while chunk := await file.read(settings.FILE_DEFAULT_CHUNK_SIZE):
+            written += len(chunk)
+            if written > max_bytes:
+                return False
+            await out_file.write(chunk)
+    return True
+
+
 @data_router.post("/upload/{project_id}")
 async def upload_data(
     request: Request,
@@ -52,9 +65,13 @@ async def upload_data(
         orig_file_name=file.filename, project_id=str(project_id)
     )
     try:
-        async with aiofiles.open(file_path, "wb") as out_file:
-            while chunk := await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
-                await out_file.write(chunk)
+        if not await _write_upload_capped(file, file_path, app_settings):
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={"status": ResponseStatus.FILE_SIZE_EXCEEDED.value},
+            )
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
         # A failed write leaves a partial file on disk with no matching asset record,

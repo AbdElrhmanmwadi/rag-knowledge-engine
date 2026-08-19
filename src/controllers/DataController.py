@@ -18,8 +18,10 @@ class DataController(BaseController):
         if not is_supported_content_type(file_name, file.content_type):
             return False, ResponseStatus.FILE_TYPE_NOT_SUPPORTED.value
 
-        file_size = file.size or 0
-        if file_size > self.app_settings.FILE_MAX_SIZE*1024*1024:
+        # Content-Length / UploadFile.size is client-controlled or may be absent.
+        # The route also enforces this cap while streaming the body to disk.
+        file_size = file.size
+        if file_size is not None and file_size > self.app_settings.FILE_MAX_SIZE*1024*1024:
             return False, ResponseStatus.FILE_SIZE_EXCEEDED.value
 
         return True, ResponseStatus.FILE_VALIDATED_SUCCESS.value

@@ -1,8 +1,11 @@
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from typing import List,Optional
 
 class Settings(BaseSettings):
+    APP_ENV: str = "development"
     APP_NAME: str
     APP_DESCRIPTION: str
     APP_VERSION: str
@@ -16,11 +19,11 @@ class Settings(BaseSettings):
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str
 
-    OPENAI_API_KEY: str = None
-    OPENAI_API_URL: str = None
-    COHERE_API_KEY: str = None
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_URL: Optional[str] = None
+    COHERE_API_KEY: Optional[str] = None
     TRANSLATION_ENGINE: str 
-    TRANSLATION_API_KEY: str = None
+    TRANSLATION_API_KEY: Optional[str] = None
     TRANSLATION_BASE_URL: str = "http://localhost:5000/translate"
     TRANSLATION_FILE_ENDPOINT_URL: str = "http://localhost:5000/translate/file"
     TRANSLATION_TIMEOUT_SECONDS: int = 60
@@ -28,13 +31,13 @@ class Settings(BaseSettings):
     TRANSLATION_RETRY_BACKOFF_SECONDS: float = 1.0
     DEFAULT_TARGET_LANG: str = "ar"
 
-    GENERATION_MODEL_ID: str = None
-    EMBEDDING_MODEL_ID: str = None
-    EMBEDDING_MODEL_SIZE: int = None
-    INPUT_DAFAULT_MAX_CHARACTERS: int = None
-    GENERATION_DAFAULT_MAX_TOKENS: int = None
-    GENERATION_DAFAULT_TEMPERATURE: float = None
-    VECTOR_DB_BACKEND_LITERAL: List[str] = None
+    GENERATION_MODEL_ID: Optional[str] = None
+    EMBEDDING_MODEL_ID: Optional[str] = None
+    EMBEDDING_MODEL_SIZE: Optional[int] = None
+    INPUT_DAFAULT_MAX_CHARACTERS: Optional[int] = None
+    GENERATION_DAFAULT_MAX_TOKENS: Optional[int] = None
+    GENERATION_DAFAULT_TEMPERATURE: Optional[float] = None
+    VECTOR_DB_BACKEND_LITERAL: Optional[List[str]] = None
     VECTOR_DB_BACKEND: str 
     VECTOR_DB_PGVEC_INDEX_THRESHOLD : int = 50
     VECTOR_DB_PATH: str
@@ -56,8 +59,8 @@ class Settings(BaseSettings):
 
     TTS_BACKEND: str = "PIPER"
     TTS_TIMEOUT_SECONDS: int = 60
-    PIPER_EXE_PATH: str = None
-    PIPER_MODEL_PATH: str = None
+    PIPER_EXE_PATH: Optional[str] = None
+    PIPER_MODEL_PATH: Optional[str] = None
     # Arabic voice; answers detected as Arabic are synthesized with this model.
     PIPER_MODEL_PATH_AR: Optional[str] = None
 
@@ -116,7 +119,7 @@ class Settings(BaseSettings):
     # =========================
     # Auth
     # =========================
-    JWT_SECRET_KEY: str = "replace-with-a-strong-random-secret"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
@@ -127,14 +130,23 @@ class Settings(BaseSettings):
     FRONTEND_BASE_URL: str = "https://your-domain.com"
     GOOGLE_CLIENT_ID: str = ""
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        # Ignore env vars this branch's Settings doesn't define. The project shares
-        # one .env across feature branches, so a var added for a feature on another
-        # branch (e.g. RERANK_*) must not crash a branch that doesn't define it.
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
-settings = Settings()
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.APP_ENV.lower() in {"production", "prod"}:
+            unsafe_secrets = {"", "replace-with-a-strong-random-secret", "change-me", "change_me"}
+            if self.JWT_SECRET_KEY in unsafe_secrets or len(self.JWT_SECRET_KEY) < 32:
+                raise ValueError("JWT_SECRET_KEY must be a unique secret of at least 32 characters in production")
+            if self.FRONTEND_BASE_URL.startswith("http://"):
+                raise ValueError("FRONTEND_BASE_URL must use HTTPS in production")
+        return self
+
+@lru_cache
 def get_settings():
-        return settings
+    """Load settings only when the application starts, not during module import."""
+    return Settings()

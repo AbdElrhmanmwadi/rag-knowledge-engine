@@ -18,7 +18,14 @@ RUN pip install --upgrade pip \
 
 COPY src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+RUN cp ./src/models/db_schemes/minirag/alembic.ini.example ./src/models/db_schemes/minirag/alembic.ini \
+    && addgroup --system app \
+    && adduser --system --ingroup app app \
+    && mkdir -p /data/rag \
+    && chown -R app:app /app /data/rag \
+    && chmod +x ./docker-entrypoint.sh
+
+USER app
 
 # The entrypoint runs alembic migrations, then execs uvicorn on port 8000.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
