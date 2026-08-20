@@ -1,5 +1,13 @@
 services:
   # ===================== Application =====================
+  storage-init:
+    image: alpine:3.20
+    container_name: storage-init
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/rag/files && chown -R 100:101 /data/rag"]
+    volumes:
+      - rag_storage:/data/rag
+
   backend:
     build:
       context: ..
@@ -19,6 +27,8 @@ services:
     depends_on:
       pgvector:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     networks:
       - backend
     restart: unless-stopped
